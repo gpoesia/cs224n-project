@@ -1,4 +1,4 @@
-class Encoder:
+class AutoCompleteEncoder:
     '''Base class for an auto-complete scheme encoder: given a string, an encoder
     able to return a shortened version of it that can be used to reconstruct the
     original string by a trained decoder.'''

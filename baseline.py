@@ -1,7 +1,7 @@
 from base import Encoder
 import random
 
-class UniformEncoder(Encoder):
+class UniformEncoder(AutoCompleteEncoder):
     'Encodes a string by removing characters uniformly at random with fixed probability.'
 
     def __init__(self, removal_probability=0.5):

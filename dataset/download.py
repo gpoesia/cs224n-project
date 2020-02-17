@@ -43,7 +43,7 @@ with open(sys.argv[1]) as f:
 downloads, skipped = 0, 0
 
 lines_by_language = collections.defaultdict(list)
-DESIRED_LINES = 10**5
+DESIRED_LINES = 10**6
 
 random.shuffle(repos)
 
@@ -58,12 +58,17 @@ try:
 
         if not os.path.exists(dest):
             subprocess.call("timeout 20 git clone --depth 1 https://github.com{} {}".format(url, dest), shell=True)
+            downloaded = True
             downloads += 1
         else:
             skipped += 1
+            downloaded = False
 
         lines = sample_lines_from_repo(dest)
         lines_by_language[row["language"]].extend(lines)
+
+        if downloaded:
+            subprocess.call("rm -rf {}".format(dest), shell=True)
 
         print('# lines by language:', {l:len(lines_by_language[l]) for l in LANGUAGES})
 except KeyboardInterrupt:
