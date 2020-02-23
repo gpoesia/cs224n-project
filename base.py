@@ -9,3 +9,11 @@ class AutoCompleteEncoder:
     def encode(self, s):
         'Returns a shortened version of the string s.'
         raise NotImplemented()
+
+    def encode_batch(self, b):
+        'Returns a shortened version of all strings in b.'
+        raise NotImplemented()
+
+    def is_optimizeable(self):
+        'Returns whether this encoder should be optimized in end-to-end training.'
+        return False

@@ -1,5 +1,6 @@
 # Seq2Seq decoder model
 
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -34,9 +35,9 @@ class AutoCompleteDecoderModel(nn.Module):
 
         if is_training:
             loss = nn.CrossEntropyLoss(ignore_index=self.alphabet.padding_token_index())
-            total_loss = torch.tensor(0.0, requires_grad=True)
             E = self.alphabet.encode_batch_indices(expected)
             E_emb = self.alphabet.encode_batch(expected)
+            predictions = []
 
         finished = torch.zeros(B)
         decoded_strings = [[] for _ in range(B)]
@@ -51,18 +52,17 @@ class AutoCompleteDecoderModel(nn.Module):
                       else self.alphabet.get_start_token().repeat(B, 1))
         last_output = None
         all_finished = False
-        losses = []
 
         while not all_finished:
             decoder_state = self.decoder_lstm(next_input, decoder_state)
             last_output = self.decoder_proj(decoder_state[0])
 
             if is_training:
-                losses.append(loss(last_output, E[:, i]))
-                if i < E_emb.shape[-1]:
-                    next_input = E_emb[:, i + 1]
+                predictions.append(last_output)
+                next_input = E_emb[:, i + 1]
             else:
-                # Set next input to last predicted character (argmax)
+                # At test time, set next input to last predicted character
+                # (greedy decoding).
                 predictions = last_output.argmax(dim=1)
                 finished[predictions == self.alphabet.end_token_index()] = 1
 
@@ -75,11 +75,15 @@ class AutoCompleteDecoderModel(nn.Module):
             i += 1
 
             if is_training:
-                all_finished = (i == C.shape[1])
+                all_finished = (i + 1 == E.shape[1])
             else:
                 all_finished = i == self.max_test_length or finished.sum() == B
 
         if is_training:
-            return torch.sum(torch.tensor(losses, requires_grad=True))
+            return (
+                    nn.CrossEntropyLoss(ignore_index=self.alphabet.padding_token_index())
+                    (torch.stack(predictions, dim=1).view((-1, self.alphabet.size())),
+                     E[:, 1:].reshape((-1,)))
+            )
         else:
             return [''.join(s) for s in decoded_strings]

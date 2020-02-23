@@ -1,4 +1,4 @@
-from base import Encoder
+from base import AutoCompleteEncoder
 import random
 
 class UniformEncoder(AutoCompleteEncoder):
@@ -12,3 +12,9 @@ class UniformEncoder(AutoCompleteEncoder):
 
     def encode(self, s):
         return ''.join(c for c in s if random.random() < self.removal_probability)
+
+    def encode_batch(self, b):
+        return [self.encode(s) for s in b]
+
+    def is_optimizeable(self):
+        return False
