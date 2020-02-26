@@ -117,3 +117,13 @@ class AsciiOneHotEncoding(AlphabetEncoding):
 
     def index_to_char(self, i):
         return chr(i)
+
+    def encode_tensor_indices(self, batch):
+        """encode batched tensor of character indices as
+        a tensor of one-hot encodings
+        
+        Arguments:
+            batch {[tensor]} -- tensor of batched indices of size [batch]
+        Returns a tensor of dimension [batch, alphabet_size]
+        """
+        return F.one_hot(batch, num_classes=self.ALPHABET_SIZE).to(torch.float)

@@ -34,7 +34,6 @@ class AutoCompleteDecoderModel(nn.Module):
         output, final_state = self.encoder_lstm(C)
 
         if is_training:
-            loss = nn.CrossEntropyLoss(ignore_index=self.alphabet.padding_token_index())
             E = self.alphabet.encode_batch_indices(expected)
             E_emb = self.alphabet.encode_batch(expected)
             predictions = []
@@ -70,7 +69,7 @@ class AutoCompleteDecoderModel(nn.Module):
                     decoded_strings[idx].append(
                             self.alphabet.index_to_char(predictions[idx]))
 
-                next_input = F.softmax(last_output, dim=1)
+                next_input = self.alphabet.encode_tensor_indices(predictions)
 
             i += 1
 
