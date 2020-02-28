@@ -3,6 +3,7 @@
 import torch
 import random
 import itertools
+import time
 
 def train(encoder,
           decoder,
@@ -43,6 +44,9 @@ def train(encoder,
     for p in all_parameters_iter():
         p.data.uniform_(-init_scale, init_scale)
 
+    begin_time = time.time()
+    examples_processed = 0
+
     for e in range(epochs):
         for i in range((len(training_set) + batch_size) // batch_size):
             batch = random.sample(training_set, batch_size)
@@ -56,7 +60,11 @@ def train(encoder,
 
             train_losses.append(loss.item())
 
+            examples_processed += len(batch)
+
             if (len(train_losses) - 1) % log_every == 0:
-                log('Epoch {} iteration {}: loss = {:.3f}'.format(e, i, train_losses[-1]))
+                time_elapsed = time.time() - begin_time
+                throughput = examples_processed / time_elapsed
+                log('Epoch {} iteration {}: loss = {:.3f}, tp = {:.2f} lines/s'.format(e, i, train_losses[-1], throughput))
 
     return train_losses
