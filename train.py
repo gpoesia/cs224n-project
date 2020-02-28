@@ -36,6 +36,7 @@ def train(encoder,
             else decoder.parameters())
 
     log = print if verbose else lambda *args: None
+    decoder.to(device)
 
     optimizer = torch.optim.Adam(all_parameters_iter(), lr=learning_rate)
 

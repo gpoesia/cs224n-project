@@ -58,44 +58,47 @@ class AsciiOneHotEncoding(AlphabetEncoding):
     START_INDEX = 1
     END_INDEX = 2
 
-    PADDING = F.one_hot(torch.scalar_tensor(0, dtype=torch.long), ALPHABET_SIZE).to(torch.float)
-    START   = F.one_hot(torch.scalar_tensor(1, dtype=torch.long), ALPHABET_SIZE).to(torch.float)
-    END     = F.one_hot(torch.scalar_tensor(2, dtype=torch.long), ALPHABET_SIZE).to(torch.float)
-
+    def __init__(self, device):
+        self.device = device
+        
+        self.PADDING = F.one_hot(torch.scalar_tensor(0, dtype=torch.long, device=device), self.ALPHABET_SIZE).to(torch.float)
+        self.START   = F.one_hot(torch.scalar_tensor(1, dtype=torch.long, device=device), self.ALPHABET_SIZE).to(torch.float)
+        self.END     = F.one_hot(torch.scalar_tensor(2, dtype=torch.long, device=device), self.ALPHABET_SIZE).to(torch.float)
+ 
     def size(self):
-        return AsciiOneHotEncoding.ALPHABET_SIZE
+        return self.ALPHABET_SIZE
 
     def encode(self, s):
         b = s.encode('ascii')
-        t = torch.zeros((len(s) + 2, AsciiOneHotEncoding.ALPHABET_SIZE))
-        t[0] = AsciiOneHotEncoding.START
+        t = torch.zeros((len(s) + 2, self.ALPHABET_SIZE), device=self.device)
+        t[0] = self.START
         t[range(1, len(s) + 1), list(b)] += 1
-        t[-1] = AsciiOneHotEncoding.END
+        t[-1] = self.END
         return t
 
     def encode_indices(self, s):
         b = s.encode('ascii')
-        return torch.tensor([AsciiOneHotEncoding.START_INDEX] +
+        return torch.tensor([self.START_INDEX] +
                              list(b) +
-                            [AsciiOneHotEncoding.END_INDEX], dtype=torch.long)
+                            [self.END_INDEX], dtype=torch.long, device=self.device)
 
     def decode(self, t):
         return ''.join(map(chr, torch.argmax(t, dim=1)))
 
     def get_padding_token(self):
-        return AsciiOneHotEncoding.PADDING
+        return self.PADDING
 
     def get_start_token(self):
-        return AsciiOneHotEncoding.START
+        return self.START
 
     def get_end_token(self):
-        return AsciiOneHotEncoding.END
+        return self.END
 
     def end_token_index(self):
-        return AsciiOneHotEncoding.END_INDEX
+        return self.END_INDEX
 
     def padding_token_index(self):
-        return AsciiOneHotEncoding.PADDING_INDEX
+        return self.PADDING_INDEX
 
     def encode_batch(self, batch):
         max_length = max(map(len, batch))
@@ -105,8 +108,8 @@ class AsciiOneHotEncoding(AlphabetEncoding):
 
     def encode_batch_indices(self, batch):
         max_length = max(map(len, batch))
-        padding_tensor = torch.tensor([AsciiOneHotEncoding.PADDING_INDEX],
-                                      dtype=torch.long)
+        padding_tensor = torch.tensor([self.PADDING_INDEX],
+                                      dtype=torch.long, device=self.device)
         return torch.stack(
                 [torch.cat([self.encode_indices(s),
                             padding_tensor.repeat(max_length - len(s))])
