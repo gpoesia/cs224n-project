@@ -41,7 +41,7 @@ class AutoCompleteDecoderModel(nn.Module):
         for i in range(B):
             # Everything after string (+ 2 tokens for begin and end) gets set to 1.
             # Used to make attention ignore padding tokens.
-            C_padding_tokens[len(compressed[i]) + 2:] = 1
+            C_padding_tokens[i][len(compressed[i]) + 2:] = 1
 
         encoder_hidden_states, final_state = self.encoder_lstm(C)
 
@@ -77,7 +77,7 @@ class AutoCompleteDecoderModel(nn.Module):
             # encoder_hidden_states: (B, L, H)
             attention_queries = self.attention_proj(decoder_hidden) # (B, H)
             attention_scores = torch.squeeze(torch.bmm(encoder_hidden_states, # (B, L, H)
-                                                       torch.unsqueeze(decoder_hidden, -1) # (B, H, 1)
+                                                       torch.unsqueeze(attention_queries, -1) # (B, H, 1)
                                                        ), 2) # -> (B, L)
 
             # Set attention scores to -infinity at padding tokens.
@@ -88,7 +88,7 @@ class AutoCompleteDecoderModel(nn.Module):
                                              encoder_hidden_states), dim=1)
             U = torch.cat([decoder_hidden, attention_result], dim=1)
             V = self.output_proj(U)
-            last_output = self.vocab_proj(self.dropout(torch.tanh(V)))
+            last_output = self.vocab_proj(V) # self.dropout(V))
 
             if is_training:
                 predictions.append(last_output)
