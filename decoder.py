@@ -72,10 +72,11 @@ class AutoCompleteDecoderModel(nn.Module):
 
         while not all_finished:
             (decoder_hidden, decoder_cell) = self.decoder_lstm(next_input, decoder_state)
+            decoder_state = (decoder_hidden, decoder_cell)
 
             # decoder_hidden: (B, H)
             # encoder_hidden_states: (B, L, H)
-            attention_queries = self.attention_proj(decoder_hidden) # (B, H)
+            attention_queries = decoder_hidden # (B, H)
             attention_scores = torch.squeeze(torch.bmm(encoder_hidden_states, # (B, L, H)
                                                        torch.unsqueeze(attention_queries, -1) # (B, H, 1)
                                                        ), 2) # -> (B, L)
@@ -88,11 +89,12 @@ class AutoCompleteDecoderModel(nn.Module):
                                              encoder_hidden_states), dim=1)
             U = torch.cat([decoder_hidden, attention_result], dim=1)
             V = self.output_proj(U)
-            last_output = self.vocab_proj(self.dropout(torch.tanh(V)))
+            timestep_out = self.dropout(torch.tanh(V))
+            last_output = self.vocab_proj(timestep_out)
 
             if is_training:
                 predictions.append(last_output)
-                next_input = torch.cat([E_emb[:, i + 1], V], dim=1)
+                next_input = torch.cat([E_emb[:, i + 1], timestep_out], dim=1)
             else:
                 # At test time, set next input to last predicted character
                 # (greedy decoding).
@@ -105,7 +107,7 @@ class AutoCompleteDecoderModel(nn.Module):
 
                 next_input = torch.cat([
                     self.alphabet.encode_tensor_indices(predictions),
-                    attention_result
+                    timestep_out,
                 ], dim=1)
 
             i += 1
