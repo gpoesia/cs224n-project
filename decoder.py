@@ -88,7 +88,7 @@ class AutoCompleteDecoderModel(nn.Module):
                                              encoder_hidden_states), dim=1)
             U = torch.cat([decoder_hidden, attention_result], dim=1)
             V = self.output_proj(U)
-            last_output = self.vocab_proj(V) # self.dropout(V))
+            last_output = self.vocab_proj(self.dropout(torch.tanh(V)))
 
             if is_training:
                 predictions.append(last_output)
