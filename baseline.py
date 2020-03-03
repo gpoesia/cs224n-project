@@ -43,7 +43,6 @@ class UniformEncoderConstantDrop(AutoCompleteEncoder):
             ind = randrange(len(seq))
             inds.append(ind)
             seq = seq[:ind] + seq[ind+1:]
-        print(f"{inds} max len {len(s)}")
         return seq
 
     def encode_batch(self, b):
@@ -152,7 +151,6 @@ class FrequencyEncoder(AutoCompleteEncoder):
             # remove first instance of n-gram from sequence
             sent = sent.split(freq, maxsplit=1)[0] + sent.split(freq, maxsplit=1)[1]
             # recalculate n-grams + frequencies in shortened sequence
-            print(f"after: {sent}")
             seq_ngram = FrequencyEncoder.zipngram(sent, self.n_gram)
             ngram_counts = list(
                 {ngram: self.ngram_counter[ngram] for ngram in seq_ngram}.items())
@@ -275,6 +273,132 @@ class FrequencyEncoderConstantDrop(AutoCompleteEncoder):
             [list[string]] -- [list of compressed sequences as strings]
         """
         assert min(len(i) for i in b) > self.n_gram, "dataset has too-small sequences! either filter out short sequences or reduce n-gram size."
+        return [self.encode(s) for s in b]
+
+    def is_optimizeable(self):
+        return False
+
+
+
+class RulesBasedEncoder(AutoCompleteEncoder):
+    'Rules-based encoder baseline for Python'
+
+    def __init__(self, rules_to_add=None):
+
+        # create a dict with some default rules that I think we should have
+        # then more additional rules can be added with rules_to_add dict
+        # structure of dict ["long sequence" : 'shortened version']
+        rules = {
+            # python rules
+            'var': 'vr',
+            'list': 'ls',
+            'range': 'rng',
+            'lambda': 'lb',
+            'enumerate': 'enm',
+            'def': 'df',
+            'return': 'ret',
+            'for': 'fr',
+            'value': 'val',
+            'sorted': 'std',
+            'reversed': 'rev',
+            'True': 'T',
+            'False': 'F',
+            'condition': 'cd',
+            'class': 'cl',
+            'string': 'str',
+            'split': 'spl',
+            'format': 'fmt',
+            'except': 'expt',
+            'assert': 'ast',
+            'collection': 'col',
+            'None': 'N',
+            'tuple': 'tup',
+            'sort': 'srt',
+            'continue': 'cnt',
+            'break': 'bk',
+            'global': 'glb',
+            'while': 'whl',
+            'import': 'imp',
+            'raise': 'rs',
+            'yield': 'yld',
+            'print': 'pt',
+            'self': 'sf',
+            'elif': 'elf',
+            # Java rules
+            'abstract': 'abs',
+            'boolean': 'bool',
+            'catch': 'cth',
+            'default': 'df',
+            'double': 'dbl',
+            'else': 'el',
+            'extends': 'etx',
+            'final': 'fnl',
+            'float': 'flt',
+            'implements': 'impl',
+            'instanceof': 'itof',
+            'interface': 'itf',
+            'long': 'lng',
+            'package': 'pkg',
+            'private': 'pvt',
+            'protected': 'ptd',
+            'public': 'pbc',
+            'short': 'sht',
+            'static': 'stc',
+            'super': 'spr',
+            'switch': 'swt',
+            'this': 't',
+            'throws': 'trws',
+            'throw': 'trw',
+            'void': 'vd',
+            'true': 'T',
+            'false': 'F',
+            'null': 'n',
+            'System': 'sys',
+            'java': 'jv',
+            'util': 'utl',
+            'String': 'str',
+            "Array": 'arr',
+            'ArrayList': 'arls',
+            'HashMap': 'hmap',
+            'List': 'ls',
+            # Haskell rules
+            'case': 'cs',
+            'data': 'dt',
+            'family': 'fm',
+            'instance': 'it',
+            'deriving': 'der',
+            'forall': 'fa',
+            'foreign': 'fgn',
+            'hiding': 'hd',
+            'infix': 'ifx',
+            'infixl': 'ifxl',
+            'infixr': 'ifxr',
+            'module': 'mdl',
+            'newtype': 'nt',
+            'proc': 'pc',
+            'qualified': 'ql',
+            'type': 't',
+            'where': 'wh',
+
+            # whitespace
+            ' ': ''
+        }
+        self.rules = {**rules, **
+                      rules_to_add} if (rules_to_add is not None) else rules
+        self.rules_itemized = list(self.rules.items())
+
+    def name(self):
+        return 'RulesBasedEncoderPython()'
+
+    def encode(self, s):
+        # loop through list of keys, if match replace key with value from rules
+        sent = s
+        for rule, key in self.rules_itemized:
+            if sent.find(rule) >= 0:
+                sent = sent.replace(rule, key)
+        return sent
+
+    def encode_batch(self, b):
         return [self.encode(s) for s in b]
 
     def is_optimizeable(self):
