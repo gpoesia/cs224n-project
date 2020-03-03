@@ -4,6 +4,7 @@ import math
 from nltk.util import ngrams
 from collections import Counter
 import pprint
+from random import randrange
 
 class UniformEncoder(AutoCompleteEncoder):
     'Encodes a string by removing characters uniformly at random with fixed probability.'
@@ -16,6 +17,34 @@ class UniformEncoder(AutoCompleteEncoder):
 
     def encode(self, s):
         return ''.join(c for c in s if random.random() < self.removal_probability)
+
+    def encode_batch(self, b):
+        return [self.encode(s) for s in b]
+
+    def is_optimizeable(self):
+        return False
+
+class UniformEncoderConstantDrop(AutoCompleteEncoder):
+    'Encodes a string by removing num_char characters uniformly.'
+
+    def __init__(self, num_chars=3):
+        self.num_chars = num_chars
+
+    def name(self):
+        return 'UniformEncoder({:.2f})'.format(self.num_chars)
+
+    def encode(self, s):
+        # remove random indices of
+        seq = s
+        assert self.num_chars < len(s), "number of chars to remove is larger than number of chars in sequence!"
+        inds = []
+        for _ in range(self.num_chars):
+            # grab a random index to remove
+            ind = randrange(len(seq))
+            inds.append(ind)
+            seq = seq[:ind] + seq[ind+1:]
+        print(f"{inds} max len {len(s)}")
+        return seq
 
     def encode_batch(self, b):
         return [self.encode(s) for s in b]
@@ -39,6 +68,7 @@ class FrequencyEncoder(AutoCompleteEncoder):
         self.compression_rate = compression_rate
         self.MIN_SIZE = 6
         self.n_gram = n_gram
+        assert n_gram > 2, "can't have an n-gram of size 2 with model that keeps first and last n-gram!"
         # grab all n-grams in dataset and count number of each example
         self.ngram_counter = Counter(
             [l for text in dataset for l in list(zip(*[text[i:] for i in range(n_gram)]))])
@@ -94,6 +124,8 @@ class FrequencyEncoder(AutoCompleteEncoder):
                 ngram_counts, key=lambda count: count[1], reverse=True)
 
         return sent
+
+        
 
     def old_encode(self, s):
         """takes a sequence and iteratively removes most frequent n-grams until
@@ -151,6 +183,99 @@ class FrequencyEncoder(AutoCompleteEncoder):
             [list[string]] -- [list of compressed sequences as strings]
         """
         return [self.old_encode(s) for s in b]
+
+    def is_optimizeable(self):
+        return False
+
+
+class FrequencyEncoderConstantDrop(AutoCompleteEncoder):
+    'Encodes a string by removing characters uniformly at random with fixed probability.'
+
+    def __init__(self, dataset, num_chars=3, n_gram=2):
+        """n-gram frequency-based baseline encoder. Removes most frequent n-grams until length of sequence 
+        is reduced to ceil(num_chars / n_gram) * n_gram
+        
+        Keyword Arguments:
+            dataset {[list[strings]]} -- [all sequence examples]
+            compression_rate {float} -- How much of the sequence to keep when encoding (default: {0.5})
+            n_gram {int} -- size of n-grams (default: {2})
+        """
+        print(
+            f"number of chars to remove is {math.ceil(num_chars / n_gram) * n_gram}")
+        self.num_chars = math.ceil(num_chars / n_gram) * n_gram
+        self.num_chars_low = math.floor(
+            num_chars / n_gram) * n_gram
+        self.n_gram = n_gram
+        assert n_gram > 2, "can't have an n-gram of size 2 with model that keeps first and last n-gram!"
+        # grab all n-grams in dataset and count number of each example
+        assert min(len(i) for i in dataset) > n_gram, "dataset has too-small sequences!"
+        self.ngram_counter = Counter(
+            [l for text in dataset for l in list(zip(*[text[i:] for i in range(n_gram)]))])
+
+    def name(self):
+        return f'FrequencyEncoder({self.n_gram}-gram, target_size:{self.num_chars})'
+
+    @staticmethod
+    def zipngram(text, n=2):
+        """converts sequence to n-sized ngram tuples (no padding)
+        
+        Arguments:
+            text {string} -- sequence to take n-grams on
+        
+        Keyword Arguments:
+            n {int} -- size of n-grams to extract (default: {2})
+        
+        Returns:
+            [list (tuples)] -- list of all n-grams in sequence
+        """
+        return list(zip(*[text[i:] for i in range(n)]))
+
+    def encode(self, s):
+        """takes a sequence and iteratively compresses the most  frequent n-gram to 
+        its first and last character until the sequence is compressed to compression_rate
+        
+        Arguments:
+            s {[string]} -- [sequence to compress]
+        """
+
+        # since strings are immutable, grab a copy
+        sent = s
+        # take floor b/c guarantees at least one char removed during compression
+        # if math.floor(self.compression_rate*len(s)) >= self.MIN_SIZE else self.MIN_SIZE
+        seq_len = len(s) - self.num_chars if (len(s) - self.num_chars) > self.n_gram else self.num_chars_low
+        assert len(s) > self.num_chars, "number of chars to remove is larger than size of sequence! either filter out short sequences or reduce n-gram size."
+        # get all n-grams from sequence
+        seq_ngram = FrequencyEncoder.zipngram(s, self.n_gram)
+        # get frequency counts of all n-grams in sequence
+        ngram_counts = sorted(list(
+            {ngram: self.ngram_counter[ngram] for ngram in seq_ngram}.items()), key=lambda count: -count[1])
+        while len(sent) > seq_len:
+            freq = ''.join(ngram_counts.pop(0)[0])
+            # get first, last characters of most frequent n-gram
+            freq_comp = freq[0] + freq[-1]
+            # remove first instance of n-gram from sequence
+            sent = sent.split(freq, maxsplit=1)[
+                0] + freq_comp + sent.split(freq, maxsplit=1)[1]
+            # recalculate n-grams + frequencies in shortened sequence
+            seq_ngram = FrequencyEncoder.zipngram(sent, self.n_gram)
+            ngram_counts = list(
+                {ngram: self.ngram_counter[ngram] for ngram in seq_ngram}.items())
+            ngram_counts = sorted(
+                ngram_counts, key=lambda count: count[1], reverse=True)
+
+        return sent
+
+    def encode_batch(self, b):
+        """compress a batch of sequences
+        
+        Arguments:
+            b {[list[string]]} -- [list of strings containing sequences to compress]
+        
+        Returns:
+            [list[string]] -- [list of compressed sequences as strings]
+        """
+        assert min(len(i) for i in b) > self.n_gram, "dataset has too-small sequences! either filter out short sequences or reduce n-gram size."
+        return [self.encode(s) for s in b]
 
     def is_optimizeable(self):
         return False
