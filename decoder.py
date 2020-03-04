@@ -4,19 +4,27 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+# Types of copy mechanism
+COPY_CLASSIC = 'classic'
+COPY_SUBSEQ = 'subseq'
+
 class AutoCompleteDecoderModel(nn.Module):
-    def __init__(self, alphabet, hidden_size=100, max_test_length=200, dropout_rate=0.2):
+    def __init__(self, alphabet, hidden_size=100, max_test_length=200, dropout_rate=0.2,
+                 copy=COPY_SUBSEQ):
         super().__init__()
 
         self.alphabet = alphabet
         self.hidden_size = hidden_size
-        self.encoder_lstm = nn.LSTM(alphabet.size(), hidden_size, batch_first=True)
+        self.encoder_lstm = nn.LSTM(alphabet.size(), hidden_size, batch_first=True, bidirectional=True)
         self.decoder_lstm = nn.LSTMCell(hidden_size + alphabet.size(), hidden_size)
-        self.output_proj = nn.Linear(2*hidden_size, hidden_size, alphabet.size())
-        self.vocab_proj = nn.Linear(hidden_size, alphabet.size())
-        self.attention_proj = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.h_proj = nn.Linear(2*hidden_size, hidden_size, bias=False)
+        self.c_proj = nn.Linear(2*hidden_size, hidden_size, bias=False)
+        self.attention_proj = nn.Linear(2*hidden_size, hidden_size, bias=False)
+        self.output_proj = nn.Linear(3*hidden_size, hidden_size, bias=False)
+        self.vocab_proj = nn.Linear(hidden_size, alphabet.size(), bias=False)
         self.dropout = nn.Dropout(dropout_rate)
         self.max_test_length = max_test_length
+        self.copy = copy
 
     def forward(self, compressed, expected=None):
         '''Forward pass, for test time if expected is None, otherwise for training.
@@ -43,25 +51,32 @@ class AutoCompleteDecoderModel(nn.Module):
             # Used to make attention ignore padding tokens.
             C_padding_tokens[i][len(compressed[i]) + 2:] = 1
 
-        encoder_hidden_states, final_state = self.encoder_lstm(C)
+        encoder_hidden_states, (enc_hn, enc_cn) = self.encoder_lstm(C)
+        decoder_state = (self.h_proj(enc_hn.transpose(0, 1).reshape(B, -1)),
+                         self.c_proj(enc_cn.transpose(0, 1).reshape(B, -1)))
 
         if is_training:
             E = self.alphabet.encode_batch_indices(expected)
             E_emb = self.alphabet.encode_batch(expected)
             predictions = []
 
+            if self.copy == COPY_SUBSEQ:
+                copy_positions = torch.stack([
+                    get_copy_positions(full, c, E.shape[1] - 1)
+                    for full, c in zip(expected, compressed)
+                ], dim=0)
+
+                E[copy_positions] = self.alphabet.copy_token_index()
+
+        if not is_training and self.copy == COPY_SUBSEQ:
+            copy_counters = [0 for _ in range(B)]
+
         finished = torch.zeros(B)
         decoded_strings = [[] for _ in range(B)]
 
-        # The encoder LSTM state's first dimension is the layer index.
-        # Since LSTMCell is single-layer, we need to get only the state of the
-        # top-most layer (-1).
-        decoder_state = (final_state[0][-1], final_state[1][-1])
         i = 0
         next_input = torch.cat([
-            (E_emb[:, 0]
-             if is_training
-             else self.alphabet.get_start_token().repeat(B, 1)),
+            (self.alphabet.get_start_token().repeat(B, 1)),
             torch.zeros((B, self.hidden_size),
                         dtype=torch.float,
                         device=self.alphabet.device)
@@ -70,15 +85,15 @@ class AutoCompleteDecoderModel(nn.Module):
         last_output = None
         all_finished = False
 
+        encoder_hidden_states_proj = self.attention_proj(encoder_hidden_states)
+
         while not all_finished:
-            (decoder_hidden, decoder_cell) = self.decoder_lstm(next_input, decoder_state)
-            decoder_state = (decoder_hidden, decoder_cell)
+            decoder_state = (decoder_hidden, decoder_cell) = self.decoder_lstm(next_input, decoder_state)
 
             # decoder_hidden: (B, H)
             # encoder_hidden_states: (B, L, H)
-            attention_queries = decoder_hidden # (B, H)
-            attention_scores = torch.squeeze(torch.bmm(encoder_hidden_states, # (B, L, H)
-                                                       torch.unsqueeze(attention_queries, -1) # (B, H, 1)
+            attention_scores = torch.squeeze(torch.bmm(encoder_hidden_states_proj, # (B, L, H)
+                                                       torch.unsqueeze(decoder_hidden, -1) # (B, H, 1)
                                                        ), 2) # -> (B, L)
 
             # Set attention scores to -infinity at padding tokens.
@@ -102,8 +117,19 @@ class AutoCompleteDecoderModel(nn.Module):
                 finished[predictions == self.alphabet.end_token_index()] = 1
 
                 for idx in (finished == 0).nonzero():
+                    copy = (self.copy is COPY_SUBSEQ and
+                               predictions[idx] == self.alphabet.copy_token_index())
+
                     decoded_strings[idx].append(
-                            self.alphabet.index_to_char(predictions[idx]))
+                            self.alphabet.index_to_char(predictions[idx])
+                            if not copy
+                            else (compressed[idx][copy_counters[idx]]
+                                  if copy_counters[idx] < len(compressed[idx])
+                                  else '')
+                            )
+
+                    if copy:
+                        copy_counters[idx] += 1
 
                 next_input = torch.cat([
                     self.alphabet.encode_tensor_indices(predictions),
@@ -125,3 +151,24 @@ class AutoCompleteDecoderModel(nn.Module):
             )
         else:
             return [''.join(s) for s in decoded_strings]
+
+def get_copy_positions(full_string, subseq, pad_to_length=0):
+    '''Computes the sequence of copies and insertions needed to get to `full_string` from `subseq`.
+
+    Example: to get from acf to abcdef, we need to copy a, insert b, copy c, insert d, insert e, copy f.
+
+    @returns a boolean tensor of length max(len(full_string), pad_to_length),
+    where each element is either True if the corresponding character will be copied
+    from the input or False if it should be inserted. In case of multiple solutions,
+    it always prefers to copy first.'''
+
+    ans = torch.zeros(1 + max(len(full_string), pad_to_length), dtype=torch.bool)
+    copied = 0
+
+    for i, c in enumerate(full_string):
+        if copied < len(subseq) and subseq[copied] == c:
+            ans[i+1] = True
+            copied += 1
+        i += 1
+
+    return ans
