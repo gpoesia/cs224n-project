@@ -29,6 +29,10 @@ class AlphabetEncoding:
         '''Returns the encoding of the end token.'''
         raise NotImplemented()
 
+    def get_copy_token(self):
+        '''Returns the encoding of the special copy token.'''
+        raise NotImplemented()
+
     def encode_batch(self, b):
         '''Takes a batch of sentences as a list of strings encodes it as a tensor.
         - b: a list of strings, of length B
@@ -57,14 +61,16 @@ class AsciiOneHotEncoding(AlphabetEncoding):
     PADDING_INDEX = 0
     START_INDEX = 1
     END_INDEX = 2
+    COPY_INDEX = 3
 
     def __init__(self, device):
         self.device = device
-        
+
         self.PADDING = F.one_hot(torch.scalar_tensor(0, dtype=torch.long, device=device), self.ALPHABET_SIZE).to(torch.float)
         self.START   = F.one_hot(torch.scalar_tensor(1, dtype=torch.long, device=device), self.ALPHABET_SIZE).to(torch.float)
         self.END     = F.one_hot(torch.scalar_tensor(2, dtype=torch.long, device=device), self.ALPHABET_SIZE).to(torch.float)
- 
+        self.COPY    = F.one_hot(torch.scalar_tensor(3, dtype=torch.long, device=device), self.ALPHABET_SIZE).to(torch.float)
+
     def size(self):
         return self.ALPHABET_SIZE
 
@@ -94,8 +100,14 @@ class AsciiOneHotEncoding(AlphabetEncoding):
     def get_end_token(self):
         return self.END
 
+    def get_copy_token(self):
+        return self.COPY
+
     def end_token_index(self):
         return self.END_INDEX
+
+    def copy_token_index(self):
+        return self.COPY_INDEX
 
     def padding_token_index(self):
         return self.PADDING_INDEX
@@ -124,7 +136,7 @@ class AsciiOneHotEncoding(AlphabetEncoding):
     def encode_tensor_indices(self, batch):
         """encode batched tensor of character indices as
         a tensor of one-hot encodings
-        
+
         Arguments:
             batch {[tensor]} -- tensor of batched indices of size [batch]
         Returns a tensor of dimension [batch, alphabet_size]
