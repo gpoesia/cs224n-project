@@ -31,7 +31,7 @@ class UniformEncoderConstantDrop(AutoCompleteEncoder):
         self.num_chars = num_chars
 
     def name(self):
-        return 'UniformEncoder({:.2f})'.format(self.num_chars)
+        return 'UniformEncoderConstantDrop({:.2f})'.format(self.num_chars)
 
     def encode(self, s):
         # remove random indices of
@@ -72,7 +72,9 @@ class FrequencyEncoder(AutoCompleteEncoder):
         self.ngram_counter = Counter(
             [l for text in dataset for l in list(zip(*[text[i:] for i in range(n_gram)]))])
     def name(self):
-        return f'FrequencyEncoder({self.n_gram}-gram, target_size:{self.compression_rate})'
+        return (
+                'FrequencyEncoder({}-gram, target_size:{})'
+                .format(self.n_gram, self.compression_rate))
 
     @staticmethod
     def zipngram(text, n=2):
@@ -198,8 +200,8 @@ class FrequencyEncoderConstantDrop(AutoCompleteEncoder):
             compression_rate {float} -- How much of the sequence to keep when encoding (default: {0.5})
             n_gram {int} -- size of n-grams (default: {2})
         """
-        print(
-            f"number of chars to remove is {math.ceil(num_chars / n_gram) * n_gram}")
+#        print(
+#            f"number of chars to remove is {math.ceil(num_chars / n_gram) * n_gram}")
         self.num_chars = math.ceil(num_chars / n_gram) * n_gram
         self.num_chars_low = math.floor(
             num_chars / n_gram) * n_gram
@@ -211,7 +213,8 @@ class FrequencyEncoderConstantDrop(AutoCompleteEncoder):
             [l for text in dataset for l in list(zip(*[text[i:] for i in range(n_gram)]))])
 
     def name(self):
-        return f'FrequencyEncoder({self.n_gram}-gram, target_size:{self.num_chars})'
+        return ('FrequencyEncoderConstantDrop({}-gram, target_size:{})'
+                .format(self.n_gram, self.num_chars))
 
     @staticmethod
     def zipngram(text, n=2):
