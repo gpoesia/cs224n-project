@@ -10,7 +10,7 @@ COPY_SUBSEQ = 'subseq'
 
 class AutoCompleteDecoderModel(nn.Module):
     def __init__(self, alphabet, hidden_size=100, max_test_length=200, dropout_rate=0.2,
-                 copy=COPY_SUBSEQ):
+                 copy=None):
         super().__init__()
 
         self.alphabet = alphabet
@@ -25,6 +25,14 @@ class AutoCompleteDecoderModel(nn.Module):
         self.dropout = nn.Dropout(dropout_rate)
         self.max_test_length = max_test_length
         self.copy = copy
+
+        if copy == COPY_CLASSIC:
+            self.p_gen_context_weight = nn.Parameter(torch.zeros(2*hidden_size))
+            self.p_gen_input_weight = nn.Parameter(
+                    torch.zeros(alphabet.size() + hidden_size))
+            self.p_gen_state_h_weight = nn.Parameter(torch.zeros(hidden_size))
+            self.p_gen_state_c_weight = nn.Parameter(torch.zeros(hidden_size))
+            self.p_gen_bias = nn.Parameter(torch.zeros(1))
 
     def forward(self, compressed, expected=None):
         '''Forward pass, for test time if expected is None, otherwise for training.
@@ -42,6 +50,7 @@ class AutoCompleteDecoderModel(nn.Module):
         is_training = expected is not None
 
         C = self.alphabet.encode_batch(compressed)
+        C_indices = self.alphabet.encode_batch_indices(compressed)
         C_padding_tokens = torch.zeros((C.shape[0], C.shape[1]),
                                         dtype=torch.long,
                                         device=C.device)
@@ -87,6 +96,8 @@ class AutoCompleteDecoderModel(nn.Module):
 
         encoder_hidden_states_proj = self.attention_proj(encoder_hidden_states)
 
+        copy_classic = self.copy is COPY_CLASSIC
+
         while not all_finished:
             decoder_state = (decoder_hidden, decoder_cell) = self.decoder_lstm(next_input, decoder_state)
 
@@ -106,6 +117,18 @@ class AutoCompleteDecoderModel(nn.Module):
             V = self.output_proj(U)
             timestep_out = self.dropout(torch.tanh(V))
             last_output = self.vocab_proj(timestep_out)
+
+            if copy_classic:
+                p_gen = torch.sigmoid(
+                            broadcast_dot(attention_result, self.p_gen_context_weight) +
+                            broadcast_dot(next_input, self.p_gen_input_weight) +
+                            broadcast_dot(decoder_hidden, self.p_gen_state_h_weight) +
+                            broadcast_dot(decoder_cell, self.p_gen_state_c_weight) +
+                            self.p_gen_bias
+                        ).view((-1, 1))
+
+                last_output *= p_gen
+                last_output.scatter_add_(1, C_indices, attention_d * (1 - p_gen))
 
             if is_training:
                 predictions.append(last_output)
@@ -172,3 +195,7 @@ def get_copy_positions(full_string, subseq, pad_to_length=0):
         i += 1
 
     return ans
+
+def broadcast_dot(m, v):
+    'torch.dot() broadcasting version'
+    return m.mm(v.view(-1, 1)).squeeze(1)
