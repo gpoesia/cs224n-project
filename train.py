@@ -27,6 +27,7 @@ def train(encoder,
     epochs = parameters.get('epochs') or 1
     verbose = parameters.get('verbose') or False
     log_every = parameters.get('log_every') or 100
+    save_model_every_epoch = parameters.get('save_model_every_epoch') or False
 
     training_set = dataset['train']
     validation_set = dataset['dev']
@@ -48,6 +49,10 @@ def train(encoder,
     begin_time = time.time()
     examples_processed = 0
     total_examples = epochs * batch_size * math.ceil(len(training_set) / batch_size)
+
+    if save_model_every_epoch:
+        intermediate_models = []
+        print('Saving model after every epoch')
 
     for e in range(epochs):
         for i in range((len(training_set) + batch_size) // batch_size):
@@ -73,5 +78,14 @@ def train(encoder,
                     remaining_seconds // 60 % 60, 
                     remaining_seconds % 60, 
                     ))
+
+        if save_model_every_epoch:
+            intermediate_models.append((
+                    (encoder.state_dict() if encoder.is_optimizeable() else None),
+                    decoder.state_dict()
+                    ))
+
+    if save_model_every_epoch:
+        return train_losses, intermediate_models
 
     return train_losses
