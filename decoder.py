@@ -116,7 +116,7 @@ class AutoCompleteDecoderModel(nn.Module):
             U = torch.cat([decoder_hidden, attention_result], dim=1)
             V = self.output_proj(U)
             timestep_out = self.dropout(torch.tanh(V))
-            last_output = self.vocab_proj(timestep_out)
+            last_output = F.softmax(self.vocab_proj(timestep_out), dim=1)
 
             if copy_classic:
                 p_gen = torch.sigmoid(
@@ -127,8 +127,7 @@ class AutoCompleteDecoderModel(nn.Module):
                             self.p_gen_bias
                         ).view((-1, 1))
 
-                last_output *= p_gen
-                last_output.scatter_add_(1, C_indices, attention_d * (1 - p_gen))
+                last_output = (last_output * p_gen).scatter_add(1, C_indices, attention_d * (1 - p_gen))
 
             if is_training:
                 predictions.append(last_output)
@@ -167,10 +166,13 @@ class AutoCompleteDecoderModel(nn.Module):
                 all_finished = i == self.max_test_length or finished.sum() == B
 
         if is_training:
+            predictions = torch.stack(predictions, dim=1)
             return (
-                    nn.CrossEntropyLoss(ignore_index=self.alphabet.padding_token_index())
-                    (torch.stack(predictions, dim=1).view((-1, self.alphabet.size())),
-                     E[:, 1:].reshape((-1,)))
+                    F.nll_loss(
+                        predictions.transpose(1, 2).log(),
+                        E[:, 1:],
+                        ignore_index=self.alphabet.padding_token_index(),
+                        reduction='none')
             )
         else:
             return [''.join(s) for s in decoded_strings]

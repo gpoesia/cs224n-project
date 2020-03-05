@@ -60,11 +60,18 @@ def train(encoder,
 
             optimizer.zero_grad()
             encoded_batch = encoder.encode_batch(batch)
-            loss = decoder(encoded_batch, batch)
+            per_prediction_loss = decoder(encoded_batch, batch)
+
+            # If training with a non-neural encoder, just compute the average
+            # prediction loss and optimize the decoder.
+            if not encoder.is_optimizeable():
+                loss = per_prediction_loss.mean()
+            else:
+                raise NotImplemented("End-to-end loss not implemented yet")
 
             loss.backward()
-            optimizer.step()
 
+            optimizer.step()
             train_losses.append(loss.item())
 
             examples_processed += len(batch)
@@ -74,9 +81,9 @@ def train(encoder,
                 throughput = examples_processed / time_elapsed
                 remaining_seconds = int((total_examples - examples_processed) / throughput)
                 log('Epoch {} iteration {}: loss = {:.3f}, tp = {:.2f} lines/s, ETA {:02}h{:02}m{:02}s'.format(e, i, train_losses[-1], throughput,
-                    remaining_seconds // (60*60), 
-                    remaining_seconds // 60 % 60, 
-                    remaining_seconds % 60, 
+                    remaining_seconds // (60*60),
+                    remaining_seconds // 60 % 60,
+                    remaining_seconds % 60,
                     ))
 
         if save_model_every_epoch:
