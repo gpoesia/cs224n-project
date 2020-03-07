@@ -22,11 +22,9 @@ class NeuralEncoder(nn.Module):
     def encode(self, s):
         pass
 
-    def forward(self, b):
+    def forward(self, encoded_batch):
         """ encode is forward """
-        batch_size = len(b)
-        C = self.alphabet.encode_batch(b) #(B,L,D)
-        encoder_hidden_states, final_state = self.encoder_lstm(C) #(B,L,H), H
+        encoder_hidden_states, final_state = self.encoder_lstm(encoded_batch) #(B,L,H), H
         prob_of_drop = torch.sigmoid(self.output_proj(encoder_hidden_states)).squeeze(2) # (B,L,1)
         return prob_of_drop
 

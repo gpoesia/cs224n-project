@@ -1,10 +1,19 @@
 # Train an end-to-end model
 
-import torch
 import random
 import itertools
 import time
 import math
+
+import torch
+import torch.nn.functional as F
+
+def bce_loss_per_token(input, target, alphabet, c_indices):
+    loss = F.binary_cross_entropy(input, target, reduction="none")
+    loss.masked_fill_(target.ge(0).bitwise_not(), 0)  # ignore_index=-1
+    indices = alphaencode_batch_indices
+    loss.masked_fill_(c_indices == alphabet.PADDING_INDEX, 0)
+    return loss
 
 def train(encoder,
           decoder,
@@ -31,11 +40,12 @@ def train(encoder,
 
     training_set = dataset['train']
     validation_set = dataset['dev']
+    alphabet = encoder.alphabet
 
     train_losses = []
-    lam = torch.tensor(35, dtype=torch.float, requires_grad=True)
+    lam = torch.tensor(10, dtype=torch.float, requires_grad=True)
     all_parameters_iter = lambda: (
-            itertools.chain(encoder.parameters(), decoder.parameters(), iter([lam]))
+            itertools.chain(encoder.parameters(), decoder.parameters())
             if encoder.is_optimizeable()
             else decoder.parameters())
 
@@ -47,6 +57,8 @@ def train(encoder,
     for p in all_parameters_iter():
         p.data.uniform_(-init_scale, init_scale)
 
+    #print("lam: ", lam)
+
     begin_time = time.time()
     examples_processed = 0
     total_examples = epochs * batch_size * math.ceil(len(training_set) / batch_size)
@@ -54,7 +66,6 @@ def train(encoder,
     if save_model_every_epoch:
         intermediate_models = []
         print('Saving model after every epoch')
-
 
     for e in range(epochs):
         for i in range((len(training_set) + batch_size) // batch_size):
@@ -70,7 +81,11 @@ def train(encoder,
                 per_prediction_loss = decoder(encoded_batch, batch) #in training time
                 loss = per_prediction_loss.mean()
             else:
-                encoded_batch_probs = encoder(batch) #(B,L)
+                batch_size = len(batch)
+                C = alphabet.encode_batch(batch) #(B,L,D)
+                C_indices = alphabet.encode_batch_indices(batch)
+                num_src_tokens = C.shape[1]
+                encoded_batch_probs = encoder(C) #(B,L)
                 print("encoded_batch_probs: ", encoded_batch_probs)
                 encoded_batch = torch.bernoulli(encoded_batch_probs) #(B,L)
                 encoded_batch_strings = [''.join([batch[i][j] for j in range(len(batch[i])) if encoded_batch[i][j+1]])
@@ -78,9 +93,20 @@ def train(encoder,
                 print("encoded_batch_strings:", encoded_batch_strings)
                 per_prediction_loss = decoder(encoded_batch_strings, batch).sum(dim=1) #B
                 print("per_prediction_loss: ", per_prediction_loss)
-                a = (per_prediction_loss - encoder.epsilon)
-                b = lam * a
-                loss = -(b+encoded_batch.sum(dim=1)).mean()
+                reward_per_sample = -(lam * (per_prediction_loss - encoder.epsilon)
+                                      + encoded_batch.sum(dim=1)).mean() #B
+
+                key_likelihood_per_token = - bce_loss_per_token(
+                    encoded_batch_probs.view(-1),
+                    encoded_batch.float().view(-1), alphabet, C_indices)
+                key_likelihood_per_sample = torch.sum(
+                    key_likelihood_per_token.view(batch_size, num_src_tokens),
+                    dim=1).div(num_src_tokens)
+
+                encoder_loss = - (key_likelihood_per_sample *
+                                reward_per_sample).sum().div(batch_size)
+
+
 
             loss.backward()
             print('grad: ', decoder.attention_proj.weight._grad)
