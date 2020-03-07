@@ -33,8 +33,9 @@ def train(encoder,
     validation_set = dataset['dev']
 
     train_losses = []
+    lam = torch.tensor(35, dtype=torch.float, requires_grad=True)
     all_parameters_iter = lambda: (
-            itertools.chain(encoder.parameters(), decoder.parameters())
+            itertools.chain(encoder.parameters(), decoder.parameters(), iter([lam]))
             if encoder.is_optimizeable()
             else decoder.parameters())
 
@@ -54,23 +55,35 @@ def train(encoder,
         intermediate_models = []
         print('Saving model after every epoch')
 
+
     for e in range(epochs):
         for i in range((len(training_set) + batch_size) // batch_size):
             batch = random.sample(training_set, batch_size)
 
             optimizer.zero_grad()
-            encoded_batch = encoder.encode_batch(batch)
-            per_prediction_loss = decoder(encoded_batch, batch)
 
+            print("batch: ", batch)
             # If training with a non-neural encoder, just compute the average
             # prediction loss and optimize the decoder.
             if not encoder.is_optimizeable():
+                encoded_batch = encoder.encode_batch(batch)
+                per_prediction_loss = decoder(encoded_batch, batch) #in training time
                 loss = per_prediction_loss.mean()
             else:
-                raise NotImplemented("End-to-end loss not implemented yet")
+                encoded_batch_probs = encoder(batch) #(B,L)
+                print("encoded_batch_probs: ", encoded_batch_probs)
+                encoded_batch = torch.bernoulli(encoded_batch_probs) #(B,L)
+                encoded_batch_strings = [''.join([batch[i][j] for j in range(len(batch[i])) if encoded_batch[i][j+1]])
+                                         for i in range(batch_size)]
+                print("encoded_batch_strings:", encoded_batch_strings)
+                per_prediction_loss = decoder(encoded_batch_strings, batch).sum(dim=1) #B
+                print("per_prediction_loss: ", per_prediction_loss)
+                a = (per_prediction_loss - encoder.epsilon)
+                b = lam * a
+                loss = -(b+encoded_batch.sum(dim=1)).mean()
 
             loss.backward()
-
+            print('grad: ', decoder.attention_proj.weight._grad)
             optimizer.step()
             train_losses.append(loss.item())
 
