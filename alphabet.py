@@ -2,6 +2,7 @@
 
 import torch
 from torch.nn import functional as F
+import torch.nn as nn
 import string
 
 class AlphabetEncoding:
@@ -50,8 +51,12 @@ class AlphabetEncoding:
         '''Returns the character in the encoding given its index.'''
         raise NotImplemented()
 
+    def is_optimizeable(self):
+        'Returns whether this encoder should be optimized in end-to-end training.'
+        return False
 
-class AsciiOneHotEncoding(AlphabetEncoding):
+
+class AsciiOneHotEncoding(AlphabetEncoding, ):
     '''One-hot encoding that only takes ASCII characters.
 
     Uses control ASCII characters 0, 1 and 2 for padding, start and end tokens,
@@ -113,6 +118,9 @@ class AsciiOneHotEncoding(AlphabetEncoding):
     def padding_token_index(self):
         return self.PADDING_INDEX
 
+    # def is_optimizeable(self):
+    #     'Returns whether this encoder should be optimized in end-to-end training.'
+    #     return False
     def encode_batch(self, batch):
         max_length = max(map(len, batch))
         return torch.stack(
@@ -144,7 +152,8 @@ class AsciiOneHotEncoding(AlphabetEncoding):
         """
         return F.one_hot(batch, num_classes=self.ALPHABET_SIZE).to(torch.float)
 
-class AsciiEmbeddedEncoding(AlphabetEncoding):
+
+class AsciiEmbeddedEncoding(AlphabetEncoding, nn.Module):
     '''character embedding for ASCII characters.
 
     Uses control ASCII characters 0, 1 and 2 for padding, start and end tokens,
@@ -158,16 +167,18 @@ class AsciiEmbeddedEncoding(AlphabetEncoding):
     COPY_INDEX = 3
 
     def __init__(self, device):
+        # super(AsciiEmbeddedEncoding, self).__init__()
+        super().__init__()
+
         self.device = device
-        self.ascii_embedding = nn.embedding(NUM_ASCII, EMBEDDING_SIZE, padding_idx = PADDING_INDEX)        
+        self.ascii_embedding = nn.embedding(self.NUM_ASCII, self.EMBEDDING_SIZE, padding_idx = self.PADDING_INDEX)        
         
 
     def size(self):
         return self.EMBEDDING_SIZE
 
     def encode(self, s):
-        b = s.encode('ascii')
-        idxs = encode_indices(s)
+        idxs = self.encode_indices(s)
         return self.ascii_embedding(idxs)
 #         t = torch.zeros((len(s) + 2, self.EMBEDDING_SIZE), device=self.device)
 #         t[0] = self.ascii_embedding(START_INDEX)
@@ -239,5 +250,7 @@ class AsciiEmbeddedEncoding(AlphabetEncoding):
         return self.ascii_embedding(batch)
 #         return F.one_hot(batch, num_classes=self.ALPHABET_SIZE).to(torch.float)
     
-    
+    def is_optimizeable(self):
+        'Returns whether this encoder should be optimized in end-to-end training.'
+        return True
     

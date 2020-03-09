@@ -40,15 +40,22 @@ def train(encoder,
 
     training_set = dataset['train']
     validation_set = dataset['dev']
-    alphabet = encoder.alphabet
+    alphabet = decoder.alphabet
 
     train_losses = []
     lam = torch.tensor(10, dtype=torch.float, requires_grad=True)
-    all_parameters_iter = lambda: (
-            itertools.chain(encoder.parameters(), decoder.parameters())
-            if encoder.is_optimizeable()
-            else decoder.parameters())
-
+    
+    if decoder.alphabet.is_optimizeable():
+        all_parameters_iter = lambda: (
+                itertools.chain(encoder.parameters(), decoder.parameters(), decoder.alphabet.parameters())
+                if encoder.is_optimizeable()
+                else decoder.parameters())
+    else:    
+        all_parameters_iter = lambda: (
+                itertools.chain(encoder.parameters(), decoder.parameters(), decoder.alphabet.parameters())
+                if encoder.is_optimizeable()
+                else decoder.parameters())
+    import pdb; pdb.set_trace()
     log = print if verbose else lambda *args: None
     decoder.to(device)
 
