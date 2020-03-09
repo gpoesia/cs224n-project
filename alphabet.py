@@ -109,6 +109,9 @@ class AsciiOneHotEncoding(AlphabetEncoding, ):
     def get_copy_token(self):
         return self.COPY
 
+    def start_token_index(self):
+        return self.START_INDEX
+
     def end_token_index(self):
         return self.END_INDEX
 

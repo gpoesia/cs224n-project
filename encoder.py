@@ -5,28 +5,26 @@ import torch.nn as nn
 
 class NeuralEncoder(nn.Module):
     'Encodes a string by removing characters.'
-    def __init__(self, alphabet, epsilon, hidden_size=100):
+    def __init__(self, alphabet, epsilon=None, hidden_size=100):
         super().__init__()
 
         self.alphabet = alphabet
-        self.epsilon = epsilon
         self.hidden_size = hidden_size
-        # what are input dimensions
         self.encoder_lstm = nn.LSTM(alphabet.size(), hidden_size, batch_first=True)
         self.output_proj = nn.Linear(hidden_size, 1)
-        print("hello darkness")
+        self.epsilon = epsilon
 
     def name(self):
-        return 'Encoder({:.2f})'.format(self.epsilon)
+        return 'NeuralEncoder(eps={:.2f})'.format(self.epsilon)
 
-    def encode(self, s):
-        pass
-
-    def forward(self, encoded_batch):
-        """ encode is forward """
+    def forward(self, encoded_batch, encoded_batch_indices):
         encoder_hidden_states, final_state = self.encoder_lstm(encoded_batch) #(B,L,H), H
-        prob_of_drop = torch.sigmoid(self.output_proj(encoder_hidden_states)).squeeze(2) # (B,L,1)
-        return prob_of_drop
+        p_keep = torch.sigmoid(self.output_proj(encoder_hidden_states)).squeeze(2) # (B,L,1)
+
+        p_keep = p_keep.masked_fill(encoded_batch_indices == self.alphabet.start_token_index(), 1.0)
+        p_keep = p_keep.masked_fill(encoded_batch_indices == self.alphabet.end_token_index(), 1.0)
+
+        return p_keep
 
     def is_optimizeable(self):
         return True
