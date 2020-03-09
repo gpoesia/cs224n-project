@@ -49,7 +49,6 @@ def train(encoder,
     begin_time = time.time()
     examples_processed = 0
     total_examples = epochs * batch_size * math.ceil(len(training_set) / batch_size)
-
     if save_model_every_epoch:
         intermediate_models = []
         print('Saving model after every epoch')

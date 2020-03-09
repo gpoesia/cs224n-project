@@ -200,9 +200,8 @@ class FrequencyEncoderConstantDrop(AutoCompleteEncoder):
             compression_rate {float} -- How much of the sequence to keep when encoding (default: {0.5})
             n_gram {int} -- size of n-grams (default: {2})
         """
-#        print(
-#            f"number of chars to remove is {math.ceil(num_chars / n_gram) * n_gram}")
-        self.num_chars = math.ceil(num_chars / n_gram) * n_gram
+        self.num_num_chars = num_chars
+        self.num_chars = num_chars #math.ceil(num_chars / n_gram) * n_gram
         self.num_chars_low = math.floor(
             num_chars / n_gram) * n_gram
         self.n_gram = n_gram
@@ -213,7 +212,7 @@ class FrequencyEncoderConstantDrop(AutoCompleteEncoder):
             [l for text in dataset for l in list(zip(*[text[i:] for i in range(n_gram)]))])
 
     def name(self):
-        return ('FrequencyEncoderConstantDrop({}-gram, target_size:{})'
+        return ('FrequencyEncoderConstantDrop({}-gram, drop:{})'
                 .format(self.n_gram, self.num_chars))
 
     @staticmethod
@@ -243,7 +242,7 @@ class FrequencyEncoderConstantDrop(AutoCompleteEncoder):
         sent = s
         # take floor b/c guarantees at least one char removed during compression
         # if math.floor(self.compression_rate*len(s)) >= self.MIN_SIZE else self.MIN_SIZE
-        seq_len = len(s) - self.num_chars if (len(s) - self.num_chars) > self.n_gram else self.num_chars_low
+        seq_len = len(s) - self.num_chars if (len(s) - self.num_chars) > self.n_gram else self.num_chars
         assert len(s) > self.num_chars, "number of chars to remove is larger than size of sequence! either filter out short sequences or reduce n-gram size."
         # get all n-grams from sequence
         seq_ngram = FrequencyEncoder.zipngram(s, self.n_gram)
@@ -251,6 +250,7 @@ class FrequencyEncoderConstantDrop(AutoCompleteEncoder):
         ngram_counts = sorted(list(
             {ngram: self.ngram_counter[ngram] for ngram in seq_ngram}.items()), key=lambda count: -count[1])
         while len(sent) > seq_len:
+#             import pdb; pdb.set_trace()
             freq = ''.join(ngram_counts.pop(0)[0])
             # get first, last characters of most frequent n-gram
             freq_comp = freq[0] + freq[-1]
@@ -263,7 +263,7 @@ class FrequencyEncoderConstantDrop(AutoCompleteEncoder):
                 {ngram: self.ngram_counter[ngram] for ngram in seq_ngram}.items())
             ngram_counts = sorted(
                 ngram_counts, key=lambda count: count[1], reverse=True)
-
+#         print(len(s), self.num_num_chars, len(sent), self.num_chars)
         return sent
 
     def encode_batch(self, b):
@@ -286,7 +286,9 @@ class FrequencyEncoderConstantDrop(AutoCompleteEncoder):
 class RulesBasedEncoder(AutoCompleteEncoder):
     'Rules-based encoder baseline for Python'
 
-    def __init__(self, rules_to_add=None):
+    def __init__(self, whitespace=False):
+        self.whitespace = whitespace
+        rules_to_add = None if not whitespace else {' ': ''}
 
         # create a dict with some default rules that I think we should have
         # then more additional rules can be added with rules_to_add dict
@@ -383,15 +385,14 @@ class RulesBasedEncoder(AutoCompleteEncoder):
             'type': 't',
             'where': 'wh',
 
-            # whitespace
-            ' ': ''
+
         }
         self.rules = {**rules, **
                       rules_to_add} if (rules_to_add is not None) else rules
         self.rules_itemized = list(self.rules.items())
 
     def name(self):
-        return 'RulesBasedEncoderPython()'
+        return 'RulesBasedEncoderPython(whitespace={})'.format(self.whitespace)
 
     def encode(self, s):
         # loop through list of keys, if match replace key with value from rules

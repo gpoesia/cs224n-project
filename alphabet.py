@@ -2,6 +2,7 @@
 
 import torch
 from torch.nn import functional as F
+import string
 
 class AlphabetEncoding:
     def size(self):
@@ -142,3 +143,101 @@ class AsciiOneHotEncoding(AlphabetEncoding):
         Returns a tensor of dimension [batch, alphabet_size]
         """
         return F.one_hot(batch, num_classes=self.ALPHABET_SIZE).to(torch.float)
+
+class AsciiEmbeddedEncoding(AlphabetEncoding):
+    '''character embedding for ASCII characters.
+
+    Uses control ASCII characters 0, 1 and 2 for padding, start and end tokens,
+    respectively.'''
+
+    EMBEDDING_SIZE = 50
+    NUM_ASCII = 128
+    PADDING_INDEX = 0
+    START_INDEX = 1
+    END_INDEX = 2
+    COPY_INDEX = 3
+
+    def __init__(self, device):
+        self.device = device
+        self.ascii_embedding = nn.embedding(NUM_ASCII, EMBEDDING_SIZE, padding_idx = PADDING_INDEX)        
+        
+
+    def size(self):
+        return self.EMBEDDING_SIZE
+
+    def encode(self, s):
+        b = s.encode('ascii')
+        idxs = encode_indices(s)
+        return self.ascii_embedding(idxs)
+#         t = torch.zeros((len(s) + 2, self.EMBEDDING_SIZE), device=self.device)
+#         t[0] = self.ascii_embedding(START_INDEX)
+# #         e = list(b)
+#         t[1:len(s)+1,:] = self.ascii_embedding(list(b))
+# #         t[self.ascii_embedding(e[i]) for i in range(1, len(s) + 1)]
+#         t[-1] = self.ascii_embedding(END_INDEX)
+#         return t
+
+    def encode_indices(self, s):
+        b = s.encode('ascii')
+        return torch.tensor([self.START_INDEX] +
+                             list(b) +
+                            [self.END_INDEX], dtype=torch.long, device=self.device)
+
+    def decode(self, t):
+        raise NotImplemented()
+
+    def get_padding_token(self):
+        return self.ascii_embedding(self.PADDING_INDEX)
+
+    def get_start_token(self):
+        return self.ascii_embedding(self.START_INDEX)
+
+    def get_end_token(self):
+        return self.self.ascii_embedding(self.END_INDEX)
+
+    def get_copy_token(self):
+        return self.self.ascii_embedding(self.COPY_INDEX)
+
+    def end_token_index(self):
+        return self.END_INDEX
+
+    def copy_token_index(self):
+        return self.COPY_INDEX
+
+    def padding_token_index(self):
+        return self.PADDING_INDEX
+
+    def encode_batch(self, batch):
+        max_length = max(map(len, batch))
+        return torch.stack(
+                [torch.cat([self.encode(s), self.ascii_encoding(self.PAD_INDEX).repeat(max_length - len(s), 1)])
+                 for s in batch])
+
+    def encode_batch_indices(self, batch):
+        max_length = max(map(len, batch))
+        padding_tensor = torch.tensor([self.PADDING_INDEX],
+                                      dtype=torch.long, device=self.device)
+        return torch.stack(
+                [torch.cat([self.encode_indices(s),
+                            padding_tensor.repeat(max_length - len(s))])
+                 for s in batch])
+
+    def char_to_index(self, c):
+        return ord(c)
+
+    def index_to_char(self, i):
+        return chr(i)
+
+    def encode_tensor_indices(self, batch):
+        """encode batched tensor of character indices as
+        a tensor of one-hot encodings
+
+        Arguments:
+            batch {[tensor]} -- tensor of batched indices of size [batch]
+        Returns a tensor of dimension [batch, alphabet_size]
+        """
+        return self.ascii_embedding(batch)
+#         return F.one_hot(batch, num_classes=self.ALPHABET_SIZE).to(torch.float)
+    
+    
+    
