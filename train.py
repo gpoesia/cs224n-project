@@ -29,9 +29,11 @@ def train(encoder,
     '''
 
     learning_rate = parameters.get('learning_rate') or 1e-2
+    encoder_learning_rate = parameters.get('encoder_learning_rate') or learning_rate / 10
     lambda_learning_rate = parameters.get('lambda_learning_rate') or 1e-2
     batch_size = parameters.get('batch_size') or 32
     init_scale = parameters.get('init_scale') or 0.1
+    initial_encoder_bias = parameters.get('initial_encoder_bias') or 3.0
     initial_lambda = parameters.get('initial_lambda') or 30
     epochs = parameters.get('epochs') or 1
     verbose = parameters.get('verbose') or False
@@ -49,20 +51,25 @@ def train(encoder,
         train_reconstruction_losses = []
         train_fraction_kept = []
 
-    lambda_ = torch.tensor(initial_lambda, dtype=torch.float, requires_grad=True)
-
-    all_parameters_iter = lambda: (
-            itertools.chain(encoder.parameters(), decoder.parameters())
-            if encoder.is_optimizeable()
-            else decoder.parameters())
+    lambda_ = torch.tensor(initial_lambda, dtype=torch.float,
+                           requires_grad=True, device=device)
 
     log = print if verbose else lambda *args: None
     decoder.to(device)
 
-    optimizer = torch.optim.Adam(all_parameters_iter(), lr=learning_rate)
+    optimizer_dec = torch.optim.Adam(decoder.parameters(), lr=learning_rate)
 
-    for p in all_parameters_iter():
+    for p in decoder.parameters():
         p.data.uniform_(-init_scale, init_scale)
+
+    if encoder.is_optimizeable():
+        encoder.to(device)
+        optimizer_enc = torch.optim.Adam(encoder.parameters(), lr=encoder_learning_rate)
+
+        for p in encoder.parameters():
+            p.data.uniform_(-init_scale, init_scale)
+
+        encoder.output_proj.bias.data.fill_(initial_encoder_bias)
 
     begin_time = time.time()
     examples_processed = 0
@@ -72,14 +79,14 @@ def train(encoder,
         print('Saving model after every epoch')
 
     if encoder.is_optimizeable():
-        print('Initial lambda:', lambda_)
+        print('Initial lambda:', lambda_.item())
         encoder.epsilon = epsilon
 
     for e in range(epochs):
         for i in range((len(training_set) + batch_size) // batch_size):
             batch = random.sample(training_set, batch_size)
 
-            optimizer.zero_grad()
+            optimizer_dec.zero_grad()
 
             if lambda_.grad is not None:
                 lambda_.grad *= 0
@@ -91,6 +98,8 @@ def train(encoder,
                 per_prediction_loss = decoder(encoded_batch, batch) #in training time
                 loss = per_prediction_loss.mean()
             else:
+                optimizer_enc.zero_grad()
+
                 batch_size = len(batch)
                 C = alphabet.encode_batch(batch) #(B,L,D)
                 C_indices = alphabet.encode_batch_indices(batch)
@@ -136,18 +145,21 @@ def train(encoder,
 
                 avg_kept = ((kept_tokens - 2) / (num_input_tokens - 2)).mean()
                 reconstruction_loss = (per_prediction_loss / (num_input_tokens - 1)).mean()
+                enc_likelihood = (key_likelihood_per_sample / (num_input_tokens - 1)).mean()
 
-                train_fraction_kept.append(avg_kept)
-                train_reconstruction_losses.append(reconstruction_loss)
+                train_fraction_kept.append(avg_kept.item())
+                train_reconstruction_losses.append(reconstruction_loss.item())
 
             loss.backward()
 
-            optimizer.step()
+            optimizer_dec.step()
 
             # Maximize the loss over lambda.
             if encoder.is_optimizeable():
                 with torch.no_grad():
                     lambda_ += lambda_learning_rate * lambda_.grad
+
+                optimizer_enc.step()
 
             train_losses.append(loss.item())
 
@@ -160,8 +172,10 @@ def train(encoder,
                 log('Epoch {} iteration {}: loss = {:.3f}, {}tp = {:.2f} lines/s, ETA {:02}h{:02}m{:02}s'.format(e, i, train_losses[-1],
                     (''
                      if not encoder.is_optimizeable()
-                     else 'lambda: {:.3f}, % kept: {:.3f}, rec_loss: {:.3f}, '.format(
-                         lambda_.item(), avg_kept.item(), reconstruction_loss.item())),
+                     else 'lambda: {:.3f}, % kept: {:.3f}, rec_loss: {:.3f}, enc_ll: {:.2f}, '.format(
+                         lambda_.item(), avg_kept.item(), reconstruction_loss.item(),
+                         enc_likelihood.item()
+                         )),
                     throughput,
                     remaining_seconds // (60*60),
                     remaining_seconds // 60 % 60,
@@ -178,7 +192,7 @@ def train(encoder,
         return train_losses, intermediate_models
 
     if encoder.is_optimizeable():
-        print('Final lambda:', lambda_)
+        print('Final lambda:', lambda_.item())
 
     return (train_losses
             if not encoder.is_optimizeable()
