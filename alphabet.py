@@ -6,10 +6,14 @@ import torch.nn as nn
 import string
 
 class AlphabetEncoding:
-    def size(self):
-        'Returns the number of dimensions of the encoding.'
+    def alphabet_size(self):
+        'Returns the number of characters in the alphabet.'
         raise NotImplemented()
 
+    def embedding_size(self):
+        'returns number of dimensions in the embedding / encoding'
+
+        raise NotImplemented()
     def encode(self, s):
         'Given a string, returns a 2D tensor representation of it.'
         raise NotImplemented()
@@ -56,7 +60,7 @@ class AlphabetEncoding:
         return False
 
 
-class AsciiOneHotEncoding(AlphabetEncoding, ):
+class AsciiOneHotEncoding(AlphabetEncoding):
     '''One-hot encoding that only takes ASCII characters.
 
     Uses control ASCII characters 0, 1 and 2 for padding, start and end tokens,
@@ -77,7 +81,10 @@ class AsciiOneHotEncoding(AlphabetEncoding, ):
         self.END     = F.one_hot(torch.scalar_tensor(2, dtype=torch.long, device=device), self.ALPHABET_SIZE).to(torch.float)
         self.COPY    = F.one_hot(torch.scalar_tensor(3, dtype=torch.long, device=device), self.ALPHABET_SIZE).to(torch.float)
 
-    def size(self):
+    def alphabet_size(self):
+        return self.ALPHABET_SIZE
+
+    def embedding_size(self):
         return self.ALPHABET_SIZE
 
     def encode(self, s):
@@ -151,12 +158,13 @@ class AsciiOneHotEncoding(AlphabetEncoding, ):
 
         Arguments:
             batch {[tensor]} -- tensor of batched indices of size [batch]
-        Returns a tensor of dimension [batch, alphabet_size]
+        Returns a tensor of dimension [batch, embedding_size]
         """
         return F.one_hot(batch, num_classes=self.ALPHABET_SIZE).to(torch.float)
 
 
 class AsciiEmbeddedEncoding(AlphabetEncoding, nn.Module):
+# class AsciiEmbeddedEncoding(AlphabetEncoding):
     '''character embedding for ASCII characters.
 
     Uses control ASCII characters 0, 1 and 2 for padding, start and end tokens,
@@ -172,26 +180,22 @@ class AsciiEmbeddedEncoding(AlphabetEncoding, nn.Module):
     def __init__(self, device):
         # super(AsciiEmbeddedEncoding, self).__init__()
         super().__init__()
-
         self.device = device
-        self.ascii_embedding = nn.embedding(self.NUM_ASCII, self.EMBEDDING_SIZE, padding_idx = self.PADDING_INDEX)        
+        self.ascii_embedding = nn.Embedding(
+            self.NUM_ASCII, self.EMBEDDING_SIZE, padding_idx=self.PADDING_INDEX)
         
+    def alphabet_size(self):
+        return self.NUM_ASCII
 
-    def size(self):
+    def embedding_size(self):
         return self.EMBEDDING_SIZE
 
     def encode(self, s):
         idxs = self.encode_indices(s)
         return self.ascii_embedding(idxs)
-#         t = torch.zeros((len(s) + 2, self.EMBEDDING_SIZE), device=self.device)
-#         t[0] = self.ascii_embedding(START_INDEX)
-# #         e = list(b)
-#         t[1:len(s)+1,:] = self.ascii_embedding(list(b))
-# #         t[self.ascii_embedding(e[i]) for i in range(1, len(s) + 1)]
-#         t[-1] = self.ascii_embedding(END_INDEX)
-#         return t
 
     def encode_indices(self, s):
+        
         b = s.encode('ascii')
         return torch.tensor([self.START_INDEX] +
                              list(b) +
@@ -201,16 +205,16 @@ class AsciiEmbeddedEncoding(AlphabetEncoding, nn.Module):
         raise NotImplemented()
 
     def get_padding_token(self):
-        return self.ascii_embedding(self.PADDING_INDEX)
+        return self.ascii_embedding(torch.tensor(self.PADDING_INDEX, device=self.device))
 
     def get_start_token(self):
-        return self.ascii_embedding(self.START_INDEX)
+        return self.ascii_embedding(torch.tensor(self.START_INDEX, device=self.device))
 
     def get_end_token(self):
-        return self.self.ascii_embedding(self.END_INDEX)
+        return self.self.ascii_embedding(torch.tensor(self.END_INDEX, device=self.device))
 
     def get_copy_token(self):
-        return self.self.ascii_embedding(self.COPY_INDEX)
+        return self.self.ascii_embedding(torch.tensor(self.COPY_INDEX), device=self.device)
 
     def end_token_index(self):
         return self.END_INDEX
@@ -222,10 +226,8 @@ class AsciiEmbeddedEncoding(AlphabetEncoding, nn.Module):
         return self.PADDING_INDEX
 
     def encode_batch(self, batch):
-        max_length = max(map(len, batch))
-        return torch.stack(
-                [torch.cat([self.encode(s), self.ascii_encoding(self.PAD_INDEX).repeat(max_length - len(s), 1)])
-                 for s in batch])
+        return self.encode_tensor_indices(self.encode_batch_indices(batch))
+        
 
     def encode_batch_indices(self, batch):
         max_length = max(map(len, batch))
@@ -248,10 +250,9 @@ class AsciiEmbeddedEncoding(AlphabetEncoding, nn.Module):
 
         Arguments:
             batch {[tensor]} -- tensor of batched indices of size [batch]
-        Returns a tensor of dimension [batch, alphabet_size]
+        Returns a tensor of dimension [batch, embedding_size]
         """
         return self.ascii_embedding(batch)
-#         return F.one_hot(batch, num_classes=self.ALPHABET_SIZE).to(torch.float)
     
     def is_optimizeable(self):
         'Returns whether this encoder should be optimized in end-to-end training.'

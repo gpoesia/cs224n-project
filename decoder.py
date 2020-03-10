@@ -13,15 +13,15 @@ class AutoCompleteDecoderModel(nn.Module):
                  copy=None):
         super().__init__()
 
-        self.alphabet = alphabet
         self.hidden_size = hidden_size
-        self.encoder_lstm = nn.LSTM(alphabet.size(), hidden_size, batch_first=True, bidirectional=True)
-        self.decoder_lstm = nn.LSTMCell(hidden_size + alphabet.size(), hidden_size)
+        self.encoder_lstm = nn.LSTM(alphabet.embedding_size(), hidden_size, batch_first=True, bidirectional=True)
+        self.decoder_lstm = nn.LSTMCell(
+            hidden_size + alphabet.embedding_size(), hidden_size)
         self.h_proj = nn.Linear(2*hidden_size, hidden_size, bias=False)
         self.c_proj = nn.Linear(2*hidden_size, hidden_size, bias=False)
         self.attention_proj = nn.Linear(2*hidden_size, hidden_size, bias=False)
         self.output_proj = nn.Linear(3*hidden_size, hidden_size, bias=False)
-        self.vocab_proj = nn.Linear(hidden_size, alphabet.size(), bias=False)
+        self.vocab_proj = nn.Linear(hidden_size, alphabet.alphabet_size(), bias=False)
         self.dropout = nn.Dropout(dropout_rate)
         self.max_test_length = max_test_length
         self.copy = copy
@@ -29,12 +29,12 @@ class AutoCompleteDecoderModel(nn.Module):
         if copy == COPY_CLASSIC:
             self.p_gen_context_weight = nn.Parameter(torch.zeros(2*hidden_size))
             self.p_gen_input_weight = nn.Parameter(
-                    torch.zeros(alphabet.size() + hidden_size))
+                    torch.zeros(alphabet.embedding_size() + hidden_size))
             self.p_gen_state_h_weight = nn.Parameter(torch.zeros(hidden_size))
             self.p_gen_state_c_weight = nn.Parameter(torch.zeros(hidden_size))
             self.p_gen_bias = nn.Parameter(torch.zeros(1))
 
-    def forward(self, compressed, expected=None):
+    def forward(self, compressed, alphabet, expected=None):
         '''Forward pass, for test time if expected is None, otherwise for training.
 
         - @param compressed: list of compressed strings.
@@ -48,13 +48,12 @@ class AutoCompleteDecoderModel(nn.Module):
 
         B = len(compressed)
         is_training = expected is not None
-
-        C = self.alphabet.encode_batch(compressed)
-        C_indices = self.alphabet.encode_batch_indices(compressed)
+        C = alphabet.encode_batch(compressed)
+        C_indices = alphabet.encode_batch_indices(compressed)
         C_padding_tokens = torch.zeros((C.shape[0], C.shape[1]),
                                         dtype=torch.long,
                                         device=C.device)
-
+        # import pdb; pdb.set_trace()
         for i in range(B):
             # Everything after string (+ 2 tokens for begin and end) gets set to 1.
             # Used to make attention ignore padding tokens.
@@ -65,17 +64,16 @@ class AutoCompleteDecoderModel(nn.Module):
                          self.c_proj(enc_cn.transpose(0, 1).reshape(B, -1)))
 
         if is_training:
-            E = self.alphabet.encode_batch_indices(expected)
-            E_emb = self.alphabet.encode_batch(expected)
+            E =  alphabet.encode_batch_indices(expected)
+            E_emb =  alphabet.encode_batch(expected)
             predictions = []
-
             if self.copy == COPY_SUBSEQ:
                 copy_positions = torch.stack([
                     get_copy_positions(full, c, E.shape[1] - 1)
                     for full, c in zip(expected, compressed)
                 ], dim=0)
 
-                E[copy_positions] = self.alphabet.copy_token_index()
+                E[copy_positions] =  alphabet.copy_token_index()
 
         if not is_training and self.copy == COPY_SUBSEQ:
             copy_counters = [0 for _ in range(B)]
@@ -85,10 +83,10 @@ class AutoCompleteDecoderModel(nn.Module):
 
         i = 0
         next_input = torch.cat([
-            (self.alphabet.get_start_token().repeat(B, 1)),
+            ( alphabet.get_start_token().repeat(B, 1)),
             torch.zeros((B, self.hidden_size),
                         dtype=torch.float,
-                        device=self.alphabet.device)
+                        device= alphabet.device)
         ], dim=1)
 
         last_output = None
@@ -100,7 +98,7 @@ class AutoCompleteDecoderModel(nn.Module):
 
         while not all_finished:
             decoder_state = (decoder_hidden, decoder_cell) = self.decoder_lstm(next_input, decoder_state)
-
+            
             # decoder_hidden: (B, H)
             # encoder_hidden_states: (B, L, H)
             attention_scores = torch.squeeze(torch.bmm(encoder_hidden_states_proj, # (B, L, H)
@@ -117,7 +115,7 @@ class AutoCompleteDecoderModel(nn.Module):
             V = self.output_proj(U)
             timestep_out = self.dropout(torch.tanh(V))
             last_output = F.softmax(self.vocab_proj(timestep_out), dim=1)
-
+            # import pdb; pdb.set_trace()
             if copy_classic:
                 p_gen = torch.sigmoid(
                             broadcast_dot(attention_result, self.p_gen_context_weight) +
@@ -136,14 +134,14 @@ class AutoCompleteDecoderModel(nn.Module):
                 # At test time, set next input to last predicted character
                 # (greedy decoding).
                 predictions = last_output.argmax(dim=1)
-                finished[predictions == self.alphabet.end_token_index()] = 1
+                finished[predictions ==  alphabet.end_token_index()] = 1
 
                 for idx in (finished == 0).nonzero():
                     copy = (self.copy is COPY_SUBSEQ and
-                               predictions[idx] == self.alphabet.copy_token_index())
+                               predictions[idx] ==  alphabet.copy_token_index())
 
                     decoded_strings[idx].append(
-                            self.alphabet.index_to_char(predictions[idx])
+                             alphabet.index_to_char(predictions[idx])
                             if not copy
                             else (compressed[idx][copy_counters[idx]]
                                   if copy_counters[idx] < len(compressed[idx])
@@ -154,7 +152,7 @@ class AutoCompleteDecoderModel(nn.Module):
                         copy_counters[idx] += 1
 
                 next_input = torch.cat([
-                    self.alphabet.encode_tensor_indices(predictions),
+                     alphabet.encode_tensor_indices(predictions),
                     timestep_out,
                 ], dim=1)
 
@@ -171,7 +169,7 @@ class AutoCompleteDecoderModel(nn.Module):
                     F.nll_loss(
                         predictions.transpose(1, 2).log(),
                         E[:, 1:],
-                        ignore_index=self.alphabet.padding_token_index(),
+                        ignore_index= alphabet.padding_token_index(),
                         reduction='none')
             )
         else:
