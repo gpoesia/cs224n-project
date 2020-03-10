@@ -17,6 +17,7 @@ def train(encoder,
           decoder,
           dataset,
           parameters,
+          alphabet,
           device):
     '''
         Trains the end-to-end model using the specified parameters.
@@ -41,7 +42,6 @@ def train(encoder,
 
     training_set = dataset['train']
     validation_set = dataset['dev']
-    alphabet = decoder.alphabet
 
     train_losses = []
 
@@ -50,11 +50,20 @@ def train(encoder,
         train_fraction_kept = []
 
     lambda_ = torch.tensor(initial_lambda, dtype=torch.float, requires_grad=True)
+    if alphabet.is_optimizeable():
+        all_parameters_iter = lambda: (
+        itertools.chain(encoder.parameters(), decoder.parameters(), alphabet.parameters())
+        if encoder.is_optimizeable()
+        else itertools.chain(decoder.parameters(), alphabet.parameters()))
+    else:
+        all_parameters_iter = lambda: (
+        itertools.chain(encoder.parameters(), decoder.parameters())
+        if encoder.is_optimizeable()
+        else decoder.parameters())
 
-    all_parameters_iter = lambda: (
-            itertools.chain(encoder.parameters(), decoder.parameters())
-            if encoder.is_optimizeable()
-            else decoder.parameters())
+
+
+
 
     log = print if verbose else lambda *args: None
     decoder.to(device)
@@ -78,7 +87,7 @@ def train(encoder,
     for e in range(epochs):
         for i in range((len(training_set) + batch_size) // batch_size):
             batch = random.sample(training_set, batch_size)
-
+            # import pdb; pdb.set_trace()
             optimizer.zero_grad()
 
             if lambda_.grad is not None:
@@ -88,7 +97,7 @@ def train(encoder,
             # prediction loss and optimize the decoder.
             if not encoder.is_optimizeable():
                 encoded_batch = encoder.encode_batch(batch)
-                per_prediction_loss = decoder(encoded_batch, batch) #in training time
+                per_prediction_loss = decoder(compressed=encoded_batch, alphabet=alphabet, expected=batch) #in training time
                 loss = per_prediction_loss.mean()
             else:
                 batch_size = len(batch)
@@ -96,7 +105,9 @@ def train(encoder,
                 C_indices = alphabet.encode_batch_indices(batch)
                 num_src_tokens = C.shape[1]
 
-                encoded_batch_probs = encoder(C, C_indices) #(B,L)
+
+                # (B,L)
+                encoded_batch_probs = encoder(encoded_batch=C, alphabet=alphabet, encoded_batch_indices=C_indices)
 
                 encoded_batch = torch.bernoulli(encoded_batch_probs) #(B,L)
                 encoded_batch.masked_fill_(C_indices == alphabet.padding_token_index(), 0)
@@ -107,7 +118,8 @@ def train(encoder,
                                          if encoded_batch[i][j+1]])
                                          for i in range(batch_size)]
 
-                per_prediction_loss = decoder(encoded_batch_strings, batch).sum(dim=1) #B
+                per_prediction_loss = decoder(
+                    compressed=encoded_batch_strings, alphabet=alphabet, expected=batch).sum(dim=1)  # B
 
                 kept_tokens = encoded_batch.sum(dim=1)
 
