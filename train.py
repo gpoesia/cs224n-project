@@ -48,7 +48,8 @@ def train(encoder,
         train_reconstruction_losses = []
         train_fraction_kept = []
 
-    lambda_ = torch.tensor(initial_lambda, dtype=torch.float, requires_grad=True)
+    lambda_ = torch.tensor(initial_lambda, dtype=torch.float,
+                           requires_grad=True, device=device)
 
     all_parameters_iter = lambda: (
             itertools.chain(encoder.parameters(), decoder.parameters())
@@ -57,6 +58,9 @@ def train(encoder,
 
     log = print if verbose else lambda *args: None
     decoder.to(device)
+
+    if encoder.is_optimizeable():
+        encoder.to(device)
 
     optimizer = torch.optim.Adam(all_parameters_iter(), lr=learning_rate)
 
@@ -134,6 +138,7 @@ def train(encoder,
                 loss = -1.0 * (key_likelihood_per_sample * reward_per_sample).mean()
 
                 avg_kept = ((kept_tokens - 2) / (num_input_tokens - 2)).mean()
+                avg_likelihood = key_likelihood_per_sample.mean()
                 reconstruction_loss = (per_prediction_loss / (num_input_tokens - 1)).mean()
 
                 train_fraction_kept.append(avg_kept)
@@ -159,8 +164,9 @@ def train(encoder,
                 log('Epoch {} iteration {}: loss = {:.3f}, {}tp = {:.2f} lines/s, ETA {:02}h{:02}m{:02}s'.format(e, i, train_losses[-1],
                     (''
                      if not encoder.is_optimizeable()
-                     else 'lambda: {:.3f}, % kept: {:.3f}, rec_loss: {:.3f}, '.format(
-                         lambda_.item(), avg_kept.item(), reconstruction_loss.item())),
+                     else 'lambda: {:.3f}, % kept: {:.3f}, rec_loss: {:.3f}, avg likelihood: {:.3f}'.format(
+                         lambda_.item(), avg_kept.item(),
+                         reconstruction_loss.item(), avg_likelihood.item())),
                     throughput,
                     remaining_seconds // (60*60),
                     remaining_seconds // 60 % 60,
