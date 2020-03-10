@@ -56,9 +56,9 @@ class FrequencyEncoder(AutoCompleteEncoder):
     'Encodes a string by removing characters uniformly at random with fixed probability.'
 
     def __init__(self, dataset, compression_rate=0.5, n_gram=2):
-        """n-gram frequency-based baseline encoder. Removes most frequent n-grams until length of sequence 
+        """n-gram frequency-based baseline encoder. Removes most frequent n-grams until length of sequence
         is reduced to floor(target_size * len(sequence))
-        
+
         Keyword Arguments:
             dataset {[list[strings]]} -- [all sequence examples]
             compression_rate {float} -- How much of the sequence to keep when encoding (default: {0.5})
@@ -79,22 +79,22 @@ class FrequencyEncoder(AutoCompleteEncoder):
     @staticmethod
     def zipngram(text, n=2):
         """converts sequence to n-sized ngram tuples (no padding)
-        
+
         Arguments:
             text {string} -- sequence to take n-grams on
-        
+
         Keyword Arguments:
             n {int} -- size of n-grams to extract (default: {2})
-        
+
         Returns:
             [list (tuples)] -- list of all n-grams in sequence
         """
         return list(zip(*[text[i:] for i in range(n)]))
 
     def encode(self, s):
-        """takes a sequence and iteratively compresses the most  frequent n-gram to 
+        """takes a sequence and iteratively compresses the most  frequent n-gram to
         its first and last character until the sequence is compressed to compression_rate
-        
+
         Arguments:
             s {[string]} -- [sequence to compress]
         """
@@ -126,26 +126,26 @@ class FrequencyEncoder(AutoCompleteEncoder):
 
         return sent
 
-        
+
 
     def old_encode(self, s):
         """takes a sequence and iteratively removes most frequent n-grams until
         sequence is compressed to compression_rate
-        
+
         Arguments:
             s {[string]} -- [sequence to compress]
-        
+
         Returns:
             [string] -- [compressed sequence]
         """
         # since strings are immutable, grab a copy
         sent = s
-        # take floor b/c guarantees at least one char removed during compression 
+        # take floor b/c guarantees at least one char removed during compression
         seq_len = math.floor(self.compression_rate*len(s)) #if math.floor(self.compression_rate*len(s)) >= self.MIN_SIZE else self.MIN_SIZE
         # get all n-grams from sequence
         seq_ngram = FrequencyEncoder.zipngram(s, self.n_gram)
         # get frequency counts of all n-grams in sequence
-        
+
         ngram_counts = sorted(list({ngram : self.ngram_counter[ngram] for ngram in seq_ngram}.items()), key= lambda count : -count[1])
         while len(sent) > seq_len:
             # most frequent n-gram
@@ -164,10 +164,10 @@ class FrequencyEncoder(AutoCompleteEncoder):
 
     def encode_batch(self, b):
         """compress a batch of sequences
-        
+
         Arguments:
             b {[list[string]]} -- [list of strings containing sequences to compress]
-        
+
         Returns:
             [list[string]] -- [list of compressed sequences as strings]
         """
@@ -175,10 +175,10 @@ class FrequencyEncoder(AutoCompleteEncoder):
 
     def old_encode_batch(self, b):
         """compress a batch of sequences
-        
+
         Arguments:
             b {[list[string]]} -- [list of strings containing sequences to compress]
-        
+
         Returns:
             [list[string]] -- [list of compressed sequences as strings]
         """
@@ -192,9 +192,9 @@ class FrequencyEncoderConstantDrop(AutoCompleteEncoder):
     'Encodes a string by removing characters uniformly at random with fixed probability.'
 
     def __init__(self, dataset, num_chars=3, n_gram=2):
-        """n-gram frequency-based baseline encoder. Removes most frequent n-grams until length of sequence 
+        """n-gram frequency-based baseline encoder. Removes most frequent n-grams until length of sequence
         is reduced to ceil(num_chars / n_gram) * n_gram
-        
+
         Keyword Arguments:
             dataset {[list[strings]]} -- [all sequence examples]
             compression_rate {float} -- How much of the sequence to keep when encoding (default: {0.5})
@@ -218,22 +218,22 @@ class FrequencyEncoderConstantDrop(AutoCompleteEncoder):
     @staticmethod
     def zipngram(text, n=2):
         """converts sequence to n-sized ngram tuples (no padding)
-        
+
         Arguments:
             text {string} -- sequence to take n-grams on
-        
+
         Keyword Arguments:
             n {int} -- size of n-grams to extract (default: {2})
-        
+
         Returns:
             [list (tuples)] -- list of all n-grams in sequence
         """
         return list(zip(*[text[i:] for i in range(n)]))
 
     def encode(self, s):
-        """takes a sequence and iteratively compresses the most  frequent n-gram to 
+        """takes a sequence and iteratively compresses the most  frequent n-gram to
         its first and last character until the sequence is compressed to compression_rate
-        
+
         Arguments:
             s {[string]} -- [sequence to compress]
         """
@@ -268,10 +268,10 @@ class FrequencyEncoderConstantDrop(AutoCompleteEncoder):
 
     def encode_batch(self, b):
         """compress a batch of sequences
-        
+
         Arguments:
             b {[list[string]]} -- [list of strings containing sequences to compress]
-        
+
         Returns:
             [list[string]] -- [list of compressed sequences as strings]
         """
@@ -288,7 +288,7 @@ class RulesBasedEncoder(AutoCompleteEncoder):
 
     def __init__(self, whitespace=False):
         self.whitespace = whitespace
-        rules_to_add = None if not whitespace else {' ': ''}
+        rules_to_add = {' ': ''} if whitespace else None
 
         # create a dict with some default rules that I think we should have
         # then more additional rules can be added with rules_to_add dict
