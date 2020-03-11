@@ -4,6 +4,7 @@ import random
 import itertools
 import time
 import math
+import json
 
 import torch
 import torch.nn.functional as F
@@ -13,6 +14,30 @@ def bce_loss_per_token(input, target, alphabet, c_indices):
     loss.masked_fill_(c_indices.view(-1) == alphabet.padding_token_index(), 0)
     return loss
 
+def dump_parameters(model_losses, filename):
+    torch.save(model_losses['decoder_state_dict'], filename + "decoder.model")
+    torch.save(model_losses['alphabet_state_dict'], filename + "alphabet.model")
+    del model_losses['decoder_state_dict']
+    del model_losses['alphabet_state_dict']        
+    js = json.dumps(model_losses)
+    with open(filename + '.json', "w") as f:
+        f.write(js)
+        
+        
+        
+def save_model(encoder, decoder, parameters, alphabet, epoch):
+    d = {'encoder_name':encoder.name(),
+         'epoch':epoch,
+         'parameters':parameters }
+    if encoder.is_optimizeable():
+        torch.save(encoder.state_dict(), encoder.name() + "_best_encoder.model")
+    torch.save(decoder.state_dict(), encoder.name() + "_best_decoder.model")
+    if alphabet.is_optimizeable():
+        torch.save(alphabet.state_dict(), encoder.name() + "_best_alphabet.model")
+    with open('best_model_{}.json'.format(encoder.name()),'w') as f:
+        f.write(json.dumps(d))
+
+        
 def train(encoder,
           decoder,
           dataset,
@@ -45,8 +70,8 @@ def train(encoder,
 
     training_set = dataset
     # validation_set = dataset['dev']
-
     train_losses = []
+    best_loss = math.inf
 
     if encoder.is_optimizeable():
         train_reconstruction_losses = []
@@ -63,14 +88,16 @@ def train(encoder,
     decoder.to(device)
 
     optimizer_dec = torch.optim.Adam(all_parameters_iter(), lr=learning_rate)
-
+    scheduler_dec = torch.optim.lr_scheduler.StepLR(optimizer_dec, step_size=4, gamma=0.1)
+    
     for p in all_parameters_iter():
         p.data.uniform_(-init_scale, init_scale)
 
     if encoder.is_optimizeable():
         encoder.to(device)
         optimizer_enc = torch.optim.Adam(encoder.parameters(), lr=encoder_learning_rate)
-
+        scheduler_enc = torch.optim.lr_scheduler.StepLR(optimizer_enc, step_size=4, gamma=0.1)
+        
         for p in encoder.parameters():
             p.data.uniform_(-init_scale, init_scale)
 
@@ -161,7 +188,6 @@ def train(encoder,
                     train_reconstruction_losses.append(reconstruction_loss.item())
 
                 loss.backward()
-                # import pdb; pdb.set_trace()
                 optimizer_dec.step()
 
                 # Maximize the loss over lambda.
@@ -192,90 +218,12 @@ def train(encoder,
                         remaining_seconds % 60,
                         ))
             else:
-<<<<<<< HEAD
-                batch_size = len(batch)
-                C = alphabet.encode_batch(batch) #(B,L,D)
-                C_indices = alphabet.encode_batch_indices(batch)
-                num_src_tokens = C.shape[1]
-
-                encoded_batch_probs = encoder(C, C_indices) #(B,L)
-
-                encoded_batch = torch.bernoulli(encoded_batch_probs) #(B,L)
-                encoded_batch.masked_fill_(C_indices == alphabet.padding_token_index(), 0)
-                num_input_tokens = (encoded_batch_probs > 0).sum(dim=1)
-
-                encoded_batch_strings = [''.join([batch[i][j]
-                                         for j in range(len(batch[i]))
-                                         if encoded_batch[i][j+1]])
-                                         for i in range(batch_size)]
-
-                per_prediction_loss = decoder(encoded_batch_strings, batch).sum(dim=1) #B
-
-                kept_tokens = encoded_batch.sum(dim=1)
-
-                reward_per_sample = (lambda_ * (per_prediction_loss - epsilon)
-                                      + kept_tokens) / num_input_tokens #B
-
-                key_likelihood_per_token = - bce_loss_per_token(
-                    encoded_batch_probs.view(-1),
-                    encoded_batch.detach().float().view(-1), alphabet, C_indices)
-
-                key_likelihood_per_sample = torch.sum(
-                    key_likelihood_per_token.view(batch_size, num_src_tokens),
-                    dim=1) # / kept_tokens
-
-                # print('Batch:', batch)
-                # print('encoded_batch:', encoded_batch)
-                # print('encoded_batch_probs:', encoded_batch_probs)
-                # print('encoded_batch_probs shape:', encoded_batch_probs.shape)
-                # print('Per prediction loss:', per_prediction_loss)
-                # print('Kept tokens:', kept_tokens)
-                # print('Reward per sample:', reward_per_sample)
-                # print('Key likelihood per token:', key_likelihood_per_token)
-                # print('Key likelihood per sample:', key_likelihood_per_sample)
-
-                loss = -1.0 * (key_likelihood_per_sample * reward_per_sample).mean()
-
-                avg_kept = ((kept_tokens - 2) / (num_input_tokens - 2)).mean()
-                avg_likelihood = key_likelihood_per_sample.mean()
-                reconstruction_loss = (per_prediction_loss / (num_input_tokens - 1)).mean()
-
-                train_fraction_kept.append(avg_kept)
-                train_reconstruction_losses.append(reconstruction_loss)
-
-            loss.backward()
-
-            optimizer.step()
-
-            # Maximize the loss over lambda.
-            if encoder.is_optimizeable():
-                with torch.no_grad():
-                    lambda_ += lambda_learning_rate * lambda_.grad
-
-            train_losses.append(loss.item())
-
-            examples_processed += len(batch)
-
-            if (len(train_losses) - 1) % log_every == 0:
-                time_elapsed = time.time() - begin_time
-                throughput = examples_processed / time_elapsed
-                remaining_seconds = int((total_examples - examples_processed) / throughput)
-                log('Epoch {} iteration {}: loss = {:.3f}, {}tp = {:.2f} lines/s, ETA {:02}h{:02}m{:02}s'.format(e, i, train_losses[-1],
-                    (''
-                     if not encoder.is_optimizeable()
-                     else 'lambda: {:.3f}, % kept: {:.3f}, rec_loss: {:.3f}, avg likelihood: {:.3f}'.format(
-                         lambda_.item(), avg_kept.item(),
-                         reconstruction_loss.item(), avg_likelihood.item())),
-                    throughput,
-                    remaining_seconds // (60*60),
-                    remaining_seconds // 60 % 60,
-                    remaining_seconds % 60,
-                    ))
-
-=======
                 break
         e +=1
->>>>>>> da1b9f310b618190b8d2b826497bf0650f6c2930
+        scheduler_dec.step()
+        if encoder.is_optimizeable(): scheduler_enc.step()
+        if (train_losses[-1] < best_loss):
+            save_model(encoder, decoder, parameters, alphabet, e)
         if save_model_every_epoch:
             intermediate_models.append((
                     (encoder.state_dict() if encoder.is_optimizeable() else None),

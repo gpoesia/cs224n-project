@@ -182,7 +182,7 @@ class AsciiEmbeddedEncoding(AlphabetEncoding, nn.Module):
         super().__init__()
         self.device = device
         self.ascii_embedding = nn.Embedding(
-            self.NUM_ASCII, self.EMBEDDING_SIZE, padding_idx=self.PADDING_INDEX)
+            self.NUM_ASCII, self.EMBEDDING_SIZE, padding_idx=self.PADDING_INDEX).cuda()
         
     def alphabet_size(self):
         return self.NUM_ASCII

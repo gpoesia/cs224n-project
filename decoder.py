@@ -27,12 +27,12 @@ class AutoCompleteDecoderModel(nn.Module):
         self.copy = copy
 
         if copy == COPY_CLASSIC:
-            self.p_gen_context_weight = nn.Parameter(torch.zeros(2*hidden_size))
+            self.p_gen_context_weight = nn.Parameter(torch.zeros(2*hidden_size), device=alphabet.device)
             self.p_gen_input_weight = nn.Parameter(
-                    torch.zeros(alphabet.embedding_size() + hidden_size))
-            self.p_gen_state_h_weight = nn.Parameter(torch.zeros(hidden_size))
-            self.p_gen_state_c_weight = nn.Parameter(torch.zeros(hidden_size))
-            self.p_gen_bias = nn.Parameter(torch.zeros(1))
+                    torch.zeros(alphabet.embedding_size() + hidden_size), device=device)
+            self.p_gen_state_h_weight = nn.Parameter(torch.zeros(hidden_size), device=device)
+            self.p_gen_state_c_weight = nn.Parameter(torch.zeros(hidden_size), device=device)
+            self.p_gen_bias = nn.Parameter(torch.zeros(1),device=device)
 
     def forward(self, compressed, alphabet, expected=None):
         '''Forward pass, for test time if expected is None, otherwise for training.
@@ -52,7 +52,7 @@ class AutoCompleteDecoderModel(nn.Module):
         C_indices = alphabet.encode_batch_indices(compressed)
         C_padding_tokens = torch.zeros((C.shape[0], C.shape[1]),
                                         dtype=torch.long,
-                                        device=C.device)
+                                        device=alphabet.device)
         # import pdb; pdb.set_trace()
         for i in range(B):
             # Everything after string (+ 2 tokens for begin and end) gets set to 1.
@@ -78,7 +78,7 @@ class AutoCompleteDecoderModel(nn.Module):
         if not is_training and self.copy == COPY_SUBSEQ:
             copy_counters = [0 for _ in range(B)]
 
-        finished = torch.zeros(B)
+        finished = torch.zeros(B, device=alphabet.device)
         decoded_strings = [[] for _ in range(B)]
 
         i = 0
@@ -185,7 +185,7 @@ def get_copy_positions(full_string, subseq, pad_to_length=0):
     from the input or False if it should be inserted. In case of multiple solutions,
     it always prefers to copy first.'''
 
-    ans = torch.zeros(1 + max(len(full_string), pad_to_length), dtype=torch.bool)
+    ans = torch.zeros(1 + max(len(full_string), pad_to_length), dtype=torch.bool, device=device)
     copied = 0
 
     for i, c in enumerate(full_string):
