@@ -22,9 +22,7 @@ def dump_parameters(model_losses, filename):
     js = json.dumps(model_losses)
     with open(filename + '.json', "w") as f:
         f.write(js)
-        
-        
-        
+
 def save_model(encoder, decoder, parameters, alphabet, epoch):
     d = {'encoder_name':encoder.name(),
          'epoch':epoch,
@@ -44,15 +42,7 @@ def train(encoder,
           parameters,
           alphabet,
           device):
-    '''
-        Trains the end-to-end model using the specified parameters.
-
-        Parameters:
-        - batch_size,
-        - learning_rate=1e-,
-        - init_scale,
-        - epochs
-    '''
+    '''Trains the end-to-end model using the specified parameters.'''
 
     learning_rate = parameters.get('learning_rate') or 1e-2
     encoder_learning_rate = parameters.get('encoder_learning_rate') or learning_rate / 10
@@ -67,6 +57,8 @@ def train(encoder,
     log_every = parameters.get('log_every') or 100
     save_model_every_epoch = parameters.get('save_model_every_epoch') or False
     epsilon = parameters.get('epsilon') or 0.6
+    lr_decay_step_size = parameters.get('lr_decay_step_size') or 4
+    lr_decay_gamma = parameters.get('lr_decay_gamma') or 0.1
 
     training_set = dataset
     # validation_set = dataset['dev']
@@ -88,15 +80,15 @@ def train(encoder,
     decoder.to(device)
 
     optimizer_dec = torch.optim.Adam(all_parameters_iter(), lr=learning_rate)
-    scheduler_dec = torch.optim.lr_scheduler.StepLR(optimizer_dec, step_size=4, gamma=0.1)
-    
+    scheduler_dec = torch.optim.lr_scheduler.StepLR(optimizer_dec, step_size=lr_decay_step_size, gamma=lr_decay_gamma)
+
     for p in all_parameters_iter():
         p.data.uniform_(-init_scale, init_scale)
 
     if encoder.is_optimizeable():
         encoder.to(device)
         optimizer_enc = torch.optim.Adam(encoder.parameters(), lr=encoder_learning_rate)
-        scheduler_enc = torch.optim.lr_scheduler.StepLR(optimizer_enc, step_size=4, gamma=0.1)
+        scheduler_enc = torch.optim.lr_scheduler.StepLR(optimizer_enc, step_size=lr_decay_step_size, gamma=lr_decay_gamma)
         
         for p in encoder.parameters():
             p.data.uniform_(-init_scale, init_scale)
@@ -190,7 +182,7 @@ def train(encoder,
                 loss.backward()
                 optimizer_dec.step()
 
-                # Maximize the loss over lambda.
+                # Maximize the loss w.r.t. lambda.
                 if encoder.is_optimizeable():
                     with torch.no_grad():
                         lambda_ += lambda_learning_rate * lambda_.grad
@@ -219,11 +211,13 @@ def train(encoder,
                         ))
             else:
                 break
-        e +=1
+        e += 1
         scheduler_dec.step()
         if encoder.is_optimizeable(): scheduler_enc.step()
         if (train_losses[-1] < best_loss):
             save_model(encoder, decoder, parameters, alphabet, e)
+            best_loss = train_losses[-1]
+
         if save_model_every_epoch:
             intermediate_models.append((
                     (encoder.state_dict() if encoder.is_optimizeable() else None),
