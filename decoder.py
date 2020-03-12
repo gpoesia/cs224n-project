@@ -224,7 +224,7 @@ class AutoCompleteDecoderModel(nn.Module):
                          prev_string+next_char,
                          decoder_hidden,
                          decoder_cell))
-            top_k = sorted(next_top_k, key=lambda x:-x[0])[:beam_size]
+            top_k = sorted(next_top_k, key=lambda x:-x[0]/len(x[1]))[:beam_size]
             depth += 1
         #return list(map(lambda x:x[1], top_k))
         return top_k

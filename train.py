@@ -18,7 +18,7 @@ def dump_parameters(model_losses, filename):
     torch.save(model_losses['decoder_state_dict'], filename + "decoder.model")
     torch.save(model_losses['alphabet_state_dict'], filename + "alphabet.model")
     del model_losses['decoder_state_dict']
-    del model_losses['alphabet_state_dict']        
+    del model_losses['alphabet_state_dict']
     js = json.dumps(model_losses)
     with open(filename + '.json', "w") as f:
         f.write(js)
@@ -35,7 +35,7 @@ def save_model(encoder, decoder, parameters, alphabet, epoch):
     with open('best_model_{}.json'.format(encoder.name()),'w') as f:
         f.write(json.dumps(d))
 
-        
+
 def train(encoder,
           decoder,
           dataset,
@@ -60,7 +60,7 @@ def train(encoder,
     lr_decay_step_size = parameters.get('lr_decay_step_size') or 4
     lr_decay_gamma = parameters.get('lr_decay_gamma') or 0.1
 
-    training_set = dataset
+    training_set = dataset['train']
     # validation_set = dataset['dev']
     train_losses = []
     best_loss = math.inf
@@ -74,7 +74,7 @@ def train(encoder,
 
     all_parameters_iter = lambda: itertools.chain(decoder.parameters(), alphabet.parameters()
                 if alphabet.is_optimizeable() else iter([]))
-    
+
 
     log = print if verbose else lambda *args: None
     decoder.to(device)
@@ -92,7 +92,7 @@ def train(encoder,
         encoder.to(device)
         optimizer_enc = torch.optim.Adam(encoder.parameters(), lr=encoder_learning_rate)
         scheduler_enc = torch.optim.lr_scheduler.StepLR(optimizer_enc, step_size=lr_decay_step_size, gamma=lr_decay_gamma)
-        
+
         for p in encoder.parameters():
             p.data.uniform_(-init_scale, init_scale)
 
