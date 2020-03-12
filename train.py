@@ -79,6 +79,9 @@ def train(encoder,
     log = print if verbose else lambda *args: None
     decoder.to(device)
 
+    if alphabet.is_optimizeable():
+        alphabet.to(device)
+
     optimizer_dec = torch.optim.Adam(all_parameters_iter(), lr=learning_rate)
     scheduler_dec = torch.optim.lr_scheduler.StepLR(optimizer_dec, step_size=lr_decay_step_size, gamma=lr_decay_gamma)
 
