@@ -1,4 +1,6 @@
-# Seq2Seq decoder model
+#Seq2Seq decoder model
+
+import math
 
 import torch
 import torch.nn as nn
@@ -98,7 +100,7 @@ class AutoCompleteDecoderModel(nn.Module):
 
         while not all_finished:
             decoder_state = (decoder_hidden, decoder_cell) = self.decoder_lstm(next_input, decoder_state)
-            
+
             # decoder_hidden: (B, H)
             # encoder_hidden_states: (B, L, H)
             attention_scores = torch.squeeze(torch.bmm(encoder_hidden_states_proj, # (B, L, H)
@@ -174,6 +176,58 @@ class AutoCompleteDecoderModel(nn.Module):
             )
         else:
             return [''.join(s) for s in decoded_strings]
+
+
+    def beam_search(self, compressed_string, alphabet, beam_size=2, max_depth=3):
+        B = 1 #batch size
+        C = alphabet.encode_batch([compressed_string])
+        C_indices = alphabet.encode_batch_indices([compressed_string])
+        encoder_hidden_states, (enc_hn, enc_cn) = self.encoder_lstm(C)
+        decoder_state = (self.h_proj(enc_hn.transpose(0, 1).reshape(B, -1)),
+                         self.c_proj(enc_cn.transpose(0, 1).reshape(B, -1)))
+        finished = torch.zeros(B)
+        start_token = alphabet.index_to_char(alphabet.START_INDEX)
+        end_token = alphabet.index_to_char(alphabet.END_INDEX)
+        #top_k : [(score, string, last_hidden_state, last_cell_state)]
+        top_k = [(0.0,
+                  start_token,
+                  *decoder_state)]
+        encoder_hidden_states_proj = self.attention_proj(encoder_hidden_states)
+        depth = 0
+        while depth < max_depth and (len(list(filter(lambda x:x[1][-1] == end_token, top_k))) < beam_size):
+            next_top_k = list(filter(lambda x:x[1][-1] == end_token, top_k))
+            # next_input is embedding of the character going in next
+            for last_decode in filter(lambda x: x[1][-1] != end_token, top_k):
+                prev_score, prev_string, prev_hidden_state, prev_cell_state = last_decode
+                last_char = prev_string[-1]
+                next_input = torch.cat((
+                    alphabet.encode(last_char)[1].unsqueeze(dim=0),
+                    torch.zeros((1,self.hidden_size), dtype=torch.float, device=alphabet.device)), dim=1)
+                decoder_state = (prev_hidden_state, prev_cell_state)
+                (decoder_hidden, decoder_cell) = self.decoder_lstm(next_input, decoder_state)
+                attention_scores = torch.squeeze(torch.bmm(encoder_hidden_states_proj,
+                                                           torch.unsqueeze(decoder_hidden, -1)
+                                                           ), 2)
+                attention_d = F.softmax(attention_scores, dim=1)
+                attention_result = torch.squeeze(torch.bmm(torch.unsqueeze(attention_d, 1),
+                                                 encoder_hidden_states), dim=1)
+                U = torch.cat([decoder_hidden, attention_result], dim=1)
+                V = self.output_proj(U)
+                timestep_out = self.dropout(torch.tanh(V))
+                last_output = F.softmax(self.vocab_proj(timestep_out), dim=1)
+                predictions, indices = last_output.topk(beam_size, dim=1)
+                probs = predictions[0]
+                for i in range(len(probs)):
+                    next_char = alphabet.index_to_char(indices[0][i])
+                    next_top_k.append(
+                        (prev_score + math.log(probs[i]),
+                         prev_string+next_char,
+                         decoder_hidden,
+                         decoder_cell))
+            top_k = sorted(next_top_k, key=lambda x:-x[0])[:beam_size]
+            depth += 1
+        #return list(map(lambda x:x[1], top_k))
+        return top_k
 
 def get_copy_positions(full_string, subseq, pad_to_length=0):
     '''Computes the sequence of copies and insertions needed to get to `full_string` from `subseq`.
