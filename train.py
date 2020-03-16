@@ -215,6 +215,7 @@ def train(encoder,
             else:
                 break
         e += 1
+        encoder.curriculum_step()
         scheduler_dec.step()
         if encoder.is_optimizeable(): scheduler_enc.step()
         if (train_losses[-1] < best_loss):

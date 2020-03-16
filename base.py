@@ -17,3 +17,6 @@ class AutoCompleteEncoder:
     def is_optimizeable(self):
         'Returns whether this encoder should be optimized in end-to-end training.'
         return False
+
+    def curriculum_step(self):
+        pass
