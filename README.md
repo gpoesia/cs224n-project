@@ -14,7 +14,7 @@
     jupyter-notebook Explanation.ipynb
 ```
 This first notebook will give a good idea of how to use this notebook.
-To see how to train models, see Experiments.ipynb, and for other bits of analysis see Results.ipynb.
+To see how to train models, see `Experiments.ipynb`, and for other bits of analysis see `Results.ipynb`.
 Lastly, to view a paper about this repository, see the the WriteUp directory.
 
 ## Authors
@@ -23,5 +23,5 @@ Lastly, to view a paper about this repository, see the the WriteUp directory.
 
 ## Acknowledgments
 
-* Mina Lee, whos' work in the natural language setting is the inspiration for this one
-* Staff of Stanford's class CS224n, for which this is a final project
+* [Mina Lee](https://minalee.info/), our project mentor whose [work](https://arxiv.org/abs/1911.06964)  on keyword-based autocomplete for natural language settings in the natural language setting inspired our project
+* Staff of Stanford's class [CS224n](http://web.stanford.edu/class/cs224n/) 
