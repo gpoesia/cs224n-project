@@ -1,0 +1,15 @@
+\BOOKMARK [1][-]{section.1}{Introduction}{}% 1
+\BOOKMARK [1][-]{section.2}{Related Work}{}% 2
+\BOOKMARK [1][-]{section.3}{Approach}{}% 3
+\BOOKMARK [2][-]{subsection.3.1}{Encoder}{section.3}% 4
+\BOOKMARK [2][-]{subsection.3.2}{Decoder}{section.3}% 5
+\BOOKMARK [3][-]{subsubsection.3.2.1}{Attention-based copy mechanism}{subsection.3.2}% 6
+\BOOKMARK [3][-]{subsubsection.3.2.2}{Hard-copy mechanism}{subsection.3.2}% 7
+\BOOKMARK [1][-]{section.4}{Experiments}{}% 8
+\BOOKMARK [2][-]{subsection.4.1}{Data}{section.4}% 9
+\BOOKMARK [2][-]{subsection.4.2}{Experimental Details}{section.4}% 10
+\BOOKMARK [2][-]{subsection.4.3}{Accuracy and Robustness of Auto-Complete Schemes}{section.4}% 11
+\BOOKMARK [2][-]{subsection.4.4}{Impact of compactness on accuracy}{section.4}% 12
+\BOOKMARK [2][-]{subsection.4.5}{Impact of different programming languages on auto-complete schemes}{section.4}% 13
+\BOOKMARK [1][-]{section.5}{Analysis}{}% 14
+\BOOKMARK [1][-]{section.6}{Conclusion and Future Work}{}% 15
