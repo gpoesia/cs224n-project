@@ -23,5 +23,5 @@ Lastly, to view a paper about this repository, see the the WriteUp directory.
 
 ## Acknowledgments
 
-* Mina Lee, who's work in the natural language setting is the inspiration for this one
+* Mina Lee, whos' work in the natural language setting is the inspiration for this one
 * Staff of Stanford's class CS224n, for which this is a final project
